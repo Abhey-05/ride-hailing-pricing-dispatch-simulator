@@ -62,7 +62,7 @@ with st.sidebar:
     dispatch_name = st.selectbox("Dispatch policy", [d.value for d in config.DispatchPolicy], index=0)
     seed = st.number_input("Random seed", min_value=0, max_value=9999, value=0, step=1)
     hours = st.slider("Simulated hours", min_value=2, max_value=24, value=24)
-    run_clicked = st.button("▶ Run simulation", type="primary", use_container_width=True)
+    run_clicked = st.button("▶ Run simulation", type="primary", width='stretch')
 
 tabs = st.tabs(["Overview", "Marketplace", "Pricing", "Dispatch", "Experimentation"])
 
@@ -89,21 +89,21 @@ if run_clicked or "last_result" in st.session_state:
         c9.metric("Driver utilization", f"{s['driver_utilization_mean']*100:.1f}%")
         c10.metric("Driver acceptance", f"{s['driver_acceptance_rate']*100:.1f}%")
         if not ts.empty:
-            st.plotly_chart(charts.demand_and_supply_over_time(ts), use_container_width=True)
+            st.plotly_chart(charts.demand_and_supply_over_time(ts), width='stretch')
         if waits:
-            st.plotly_chart(charts.wait_distribution({f"{result.dispatch_policy}": waits}), use_container_width=True)
+            st.plotly_chart(charts.wait_distribution({f"{result.dispatch_policy}": waits}), width='stretch')
 
     with tabs[1]:
         st.subheader("Marketplace state")
         if not ts.empty:
-            st.plotly_chart(charts.demand_and_supply_over_time(ts), use_container_width=True, key="mkt_ts")
+            st.plotly_chart(charts.demand_and_supply_over_time(ts), width='stretch', key="mkt_ts")
         st.metric("Unmatched requests (abandoned + cancelled)", s["unmatched_requests"])
         st.metric("Avg pickup distance (km)", f"{s['avg_pickup_distance_km']:.2f}")
 
     with tabs[2]:
         st.subheader("Pricing")
         if not ts.empty:
-            st.plotly_chart(charts.surge_over_time(ts), use_container_width=True)
+            st.plotly_chart(charts.surge_over_time(ts), width='stretch')
         st.metric("Price index (realized / no-surge)", f"{s['price_index']:.3f}")
         st.metric("Rider conversion rate", f"{s['rider_conversion_rate']*100:.1f}%")
         st.metric("Rejected offers (price/wait too high)", s["n_rejected_offer"])
@@ -128,16 +128,16 @@ with tabs[4]:
 
         col1, col2 = st.columns(2)
         with col1:
-            st.plotly_chart(charts.dispatch_vs_wait(core, "p90_wait_min", "P90 Rider Wait by Dispatch Policy", "P90 wait (min)"), use_container_width=True)
-            st.plotly_chart(charts.policy_frontier(core), use_container_width=True)
+            st.plotly_chart(charts.dispatch_vs_wait(core, "p90_wait_min", "P90 Rider Wait by Dispatch Policy", "P90 wait (min)"), width='stretch')
+            st.plotly_chart(charts.policy_frontier(core), width='stretch')
         with col2:
-            st.plotly_chart(charts.confidence_intervals(comparisons), use_container_width=True)
-            st.plotly_chart(charts.dispatch_vs_utilization(core), use_container_width=True)
+            st.plotly_chart(charts.confidence_intervals(comparisons), width='stretch')
+            st.plotly_chart(charts.dispatch_vs_utilization(core), width='stretch')
 
         st.markdown("#### Decision table (ranked by North Star, subject to guardrails)")
-        st.dataframe(decision, use_container_width=True)
+        st.dataframe(decision, width='stretch')
 
         st.markdown("#### Full paired statistical comparisons vs. NEAREST_DRIVER baseline")
-        st.dataframe(comparisons, use_container_width=True)
+        st.dataframe(comparisons, width='stretch')
     except FileNotFoundError:
         st.warning("Run `python run_experiments.py` and `python analyze_results.py` first to populate this tab.")
