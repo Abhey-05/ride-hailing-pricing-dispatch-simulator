@@ -1,0 +1,52 @@
+{
+  "generated_at_unix": 1788866647.780891,
+  "n_runs": 1080,
+  "n_core_runs": 480,
+  "n_robustness_runs": 600,
+  "wall_clock_seconds": 327.8156192302704,
+  "python_version": "3.14.7 (v3.14.7:823f0323ee6, Aug  5 2026, 07:07:01) [Clang 21.0.0 (clang-2100.1.1.101)]",
+  "numpy_version": "2.5.3",
+  "pandas_version": "3.0.5",
+  "core_scenario": "NORMAL",
+  "core_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23
+  ],
+  "robustness_scenarios": [
+    "PEAK_DEMAND",
+    "SUPPLY_SHORTAGE",
+    "DEMAND_SHOCK",
+    "LOW_DEMAND",
+    "CONGESTED_PEAK"
+  ],
+  "robustness_seeds": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ]
+}

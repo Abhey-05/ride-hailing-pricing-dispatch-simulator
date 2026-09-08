@@ -1,0 +1,14 @@
+parameter,factor,relative_effect_pct,sign_preserved
+baseline,1.0,-9.450757575757576,True
+price_elasticity (beta_price),0.7,-8.680555555555555,True
+price_elasticity (beta_price),1.3,-6.25,True
+rider_patience,0.7,-10.303030303030303,True
+rider_patience,1.3,-7.9734848484848495,True
+driver_acceptance_sensitivity (gamma_pickup/fare),0.7,-6.25,True
+driver_acceptance_sensitivity (gamma_pickup/fare),1.3,-10.953282828282829,True
+congestion_multiplier,0.7,-9.20138888888889,True
+congestion_multiplier,1.3,-13.301282051282051,True
+demand_intensity (lambda_base),0.7,-5.590277777777779,True
+demand_intensity (lambda_base),1.3,-7.669871794871794,True
+supply_intensity (fleet_size),0.7,-4.201302729528625,True
+supply_intensity (fleet_size),1.3,-7.533212560386795,True
