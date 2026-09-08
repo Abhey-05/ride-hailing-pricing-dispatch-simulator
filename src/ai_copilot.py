@@ -1,18 +1,32 @@
 """
 AI Marketplace Analyst -- a natural-language interface over the simulation's
-results, built on Claude tool-calling.
+results, built on LLM tool-calling.
 
 Architecture (docs/PRD.md "AI guardrails" section has the full writeup):
 
-    user question -> Claude -> picks a tool -> src.copilot_tools function
+    user question -> LLM -> picks a tool -> src.copilot_tools function
     runs (reads results/*.csv or runs a real simulation) -> tool result
-    (numbers) fed back to Claude -> Claude explains it in words.
+    (numbers) fed back to the LLM -> LLM explains it in words.
 
-Claude NEVER computes a metric itself -- every number in its answer must
+The LLM NEVER computes a metric itself -- every number in its answer must
 have come from a tool call. The system prompt enforces this, and every tool
 result carries a `source` field the model is instructed to cite.
 
-Requires ANTHROPIC_API_KEY in the environment. Run interactively with:
+Provider-agnostic by design (this is a real architectural claim, not just
+words -- see docs/INTERVIEW_GUIDE.md Q51): the tool-calling loop is
+implemented once per provider's API shape (Anthropic's `tool_use`/
+`tool_result` content blocks vs. Groq/OpenAI's `tool_calls`/`role:"tool"`
+messages), both driving the exact same SYSTEM_PROMPT and the exact same
+src.copilot_tools functions, so switching providers changes zero product
+behavior or guardrails.
+
+Provider selection (checked in this order):
+    1. AI_PROVIDER env var ("anthropic" or "groq"), if set explicitly.
+    2. ANTHROPIC_API_KEY present -> anthropic.
+    3. GROQ_API_KEY present -> groq.
+    4. Otherwise: raises a clear error telling the caller to set one.
+
+Run interactively with:
     python ask_copilot.py "Which dispatch policy performs best during peak hours?"
 """
 from __future__ import annotations
@@ -22,7 +36,8 @@ import os
 
 from src import copilot_tools
 
-MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 
 SYSTEM_PROMPT = """You are an AI Marketplace Analyst for a ride-hailing simulation project.
 
@@ -123,7 +138,39 @@ def _execute_tool(name: str, tool_input: dict) -> dict:
         return {"error": str(e)}
 
 
-def ask(question: str, max_turns: int = 6, verbose: bool = False) -> str:
+def _openai_style_tools() -> list[dict]:
+    """Groq's API (and OpenAI's) wants {"type": "function", "function": {...}}
+    instead of Anthropic's flatter {"name", "description", "input_schema"} --
+    same content, different envelope. Converted once here so TOOLS stays the
+    single source of truth for what the copilot can do."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["input_schema"],
+            },
+        }
+        for t in TOOLS
+    ]
+
+
+def resolve_provider() -> str:
+    explicit = os.environ.get("AI_PROVIDER", "").strip().lower()
+    if explicit in ("anthropic", "groq"):
+        return explicit
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    if os.environ.get("GROQ_API_KEY"):
+        return "groq"
+    raise RuntimeError(
+        "No LLM API key found. Set ANTHROPIC_API_KEY or GROQ_API_KEY "
+        "(optionally AI_PROVIDER=anthropic|groq to force one)."
+    )
+
+
+def _ask_anthropic(question: str, max_turns: int, verbose: bool) -> str:
     import anthropic  # imported lazily so the rest of the project works without the SDK/key
 
     client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from the environment
@@ -131,7 +178,7 @@ def ask(question: str, max_turns: int = 6, verbose: bool = False) -> str:
 
     for _ in range(max_turns):
         response = client.messages.create(
-            model=MODEL, max_tokens=1024, system=SYSTEM_PROMPT, tools=TOOLS, messages=messages,
+            model=ANTHROPIC_MODEL, max_tokens=1024, system=SYSTEM_PROMPT, tools=TOOLS, messages=messages,
         )
         messages.append({"role": "assistant", "content": response.content})
 
@@ -153,3 +200,53 @@ def ask(question: str, max_turns: int = 6, verbose: bool = False) -> str:
         messages.append({"role": "user", "content": tool_results})
 
     return "Reached max tool-call turns without a final answer -- the question may be too complex or ambiguous."
+
+
+def _ask_groq(question: str, max_turns: int, verbose: bool) -> str:
+    import groq  # imported lazily so the rest of the project works without the SDK/key
+
+    client = groq.Groq()  # reads GROQ_API_KEY from the environment
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": question},
+    ]
+    tools = _openai_style_tools()
+
+    for _ in range(max_turns):
+        response = client.chat.completions.create(
+            model=GROQ_MODEL, max_tokens=1024, tools=tools, tool_choice="auto", messages=messages,
+        )
+        msg = response.choices[0].message
+
+        if not msg.tool_calls:
+            return msg.content or ""
+
+        messages.append({
+            "role": "assistant",
+            "content": msg.content,
+            "tool_calls": [
+                {"id": tc.id, "type": "function",
+                 "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                for tc in msg.tool_calls
+            ],
+        })
+        for tc in msg.tool_calls:
+            args = json.loads(tc.function.arguments or "{}")
+            if verbose:
+                print(f"[tool call] {tc.function.name}({args})")
+            result = _execute_tool(tc.function.name, args)
+            messages.append({
+                "role": "tool", "tool_call_id": tc.id,
+                "content": json.dumps(result, default=str),
+            })
+
+    return "Reached max tool-call turns without a final answer -- the question may be too complex or ambiguous."
+
+
+def ask(question: str, max_turns: int = 6, verbose: bool = False) -> str:
+    provider = resolve_provider()
+    if verbose:
+        print(f"[provider] {provider}")
+    if provider == "groq":
+        return _ask_groq(question, max_turns, verbose)
+    return _ask_anthropic(question, max_turns, verbose)

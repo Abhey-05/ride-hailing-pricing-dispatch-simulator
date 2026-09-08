@@ -66,7 +66,7 @@ Full design rationale, database schema (as it would be operationalized in produc
 - **34 automated tests** covering reproducibility, every invariant in the Validation Plan, and API endpoints (`tests/`).
 - **Streamlit dashboard** for live simulation + experiment browsing (`dashboard/app.py`).
 - **FastAPI service** exposing the engine and results (`api/main.py`).
-- **AI Marketplace Analyst**: a Claude tool-calling copilot that answers marketplace questions by calling deterministic functions against real results — it never computes a metric itself (`src/ai_copilot.py`, `src/copilot_tools.py`). Requires `ANTHROPIC_API_KEY`.
+- **AI Marketplace Analyst**: an LLM tool-calling copilot that answers marketplace questions by calling deterministic functions against real results — it never computes a metric itself (`src/ai_copilot.py`, `src/copilot_tools.py`). Provider-agnostic: works with `ANTHROPIC_API_KEY` (Claude) or `GROQ_API_KEY` (Groq), verified live against both — see `docs/AI_COPILOT_TRANSCRIPT.md` for a real transcript.
 
 ## Setup & running it
 
@@ -105,9 +105,11 @@ streamlit run dashboard/app.py
 # Launch the API
 uvicorn api.main:app --reload
 
-# Ask the AI Marketplace Analyst (requires ANTHROPIC_API_KEY)
-export ANTHROPIC_API_KEY=sk-ant-...
+# Ask the AI Marketplace Analyst (requires ANTHROPIC_API_KEY or GROQ_API_KEY)
+# put ONE of these in a local, gitignored .env file (auto-loaded), e.g.:
+#   GROQ_API_KEY=gsk_...
 python ask_copilot.py "Which dispatch policy performs best, and is it statistically real?"
+# force a specific provider if both keys are set: AI_PROVIDER=groq python ask_copilot.py "..."
 ```
 
 ## Reproducibility
@@ -128,6 +130,7 @@ Every run takes an explicit integer seed; `numpy.random.SeedSequence` (never Pyt
 | [`docs/INTERVIEW_GUIDE.md`](docs/INTERVIEW_GUIDE.md) | 30-sec to 10-min pitches, 4 audience-specific versions, 75+ Q&A |
 | [`docs/PRODUCT_CASE_STUDY.md`](docs/PRODUCT_CASE_STUDY.md) | 5 mock PM case interviews built on this project |
 | [`docs/CRITICAL_REVIEW.md`](docs/CRITICAL_REVIEW.md) | A skeptical senior-PM review of this project's weaknesses, run honestly against itself |
+| [`docs/AI_COPILOT_TRANSCRIPT.md`](docs/AI_COPILOT_TRANSCRIPT.md) | Real, verified Q&A transcript from a live run of the AI copilot |
 | [`docs/CV_BULLETS.md`](docs/CV_BULLETS.md) | 5 CV bullet variants + fintech/Navi relevance discussion |
 | [`reports/FINAL_REPORT.md`](reports/FINAL_REPORT.md) | The condensed end-to-end project report |
 | [`presentation/project_presentation.pptx`](presentation/project_presentation.pptx) | 12-slide recruiter/interviewer-facing deck |

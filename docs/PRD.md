@@ -168,3 +168,4 @@ Python 3.11+, numpy/pandas/scipy/scikit-learn, FastAPI, Streamlit, Plotly, Anthr
 5. Rider-segment-level (not just pooled) metric reporting, for the fairness considerations in §18.
 6. Retune or retire `ADVANCED_HEURISTIC`'s weights based on the Experiments-doc finding.
 7. Re-run robustness scenarios (Experiments 7–10) with 24 seeds instead of 6, to remove the "not statistically significant" caveat currently attached to two of them.
+8. ~~Live end-to-end test of the AI copilot~~ — **done**: run against Groq (`openai/gpt-oss-120b`), 4 real questions, all verified correct against documented ground truth (`docs/AI_COPILOT_TRANSCRIPT.md`) — also confirmed the copilot's provider-agnostic architecture by running it on a second LLM provider unmodified except for the request/response translation layer.

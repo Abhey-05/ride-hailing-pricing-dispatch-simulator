@@ -9,6 +9,7 @@ fastapi>=0.111
 uvicorn>=0.30
 pytest>=8.2
 anthropic>=0.34
+groq>=0.11
 python-multipart>=0.0.9
 httpx>=0.27
 kaleido>=0.2.1
