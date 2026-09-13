@@ -102,34 +102,154 @@ def confidence_intervals(comparisons: pd.DataFrame) -> go.Figure:
     return fig
 
 
-def wait_distribution(wait_minutes_by_policy: dict[str, list[float]]) -> go.Figure:
+def wait_distribution(wait_minutes_by_policy: dict[str, list[float]], context=None) -> go.Figure:
     fig = go.Figure()
     for name, waits in wait_minutes_by_policy.items():
         fig.add_trace(go.Histogram(x=waits, name=name, opacity=0.6, nbinsx=40, histnorm="probability"))
+    suffix = f" {context.chart_suffix()}" if context is not None else ""
     fig.update_layout(
-        title="Rider Wait Time Distribution: Baseline vs. Best Dispatch Policy (single representative day, seed=0)",
+        title=f"Rider Wait Time Distribution{suffix}",
         xaxis_title="Wait time (minutes, request to pickup)", yaxis_title="Share of completed trips",
         barmode="overlay", template=TEMPLATE,
     )
     return fig
 
 
-def demand_and_supply_over_time(ts: pd.DataFrame) -> go.Figure:
+def demand_and_supply_over_time(ts: pd.DataFrame, context=None) -> go.Figure:
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=ts.hour, y=ts.outstanding_requests, name="Outstanding requests (waiting)", line=dict(color=COLORWAY[0])))
     fig.add_trace(go.Scatter(x=ts.hour, y=ts.available_drivers, name="Available drivers", line=dict(color=COLORWAY[1])))
+    suffix = f" {context.chart_suffix()}" if context is not None else "(current run)"
     fig.update_layout(
-        title="Demand & Supply Over a Simulated Day (NORMAL scenario, seed=0)",
+        title=f"Demand & Supply Over a Simulated Day {suffix}",
         xaxis_title="Hour of day", yaxis_title="Count (city-wide)", template=TEMPLATE,
     )
     return fig
 
 
-def surge_over_time(ts: pd.DataFrame) -> go.Figure:
+def surge_over_time(ts: pd.DataFrame, context=None) -> go.Figure:
+    suffix = f" {context.chart_suffix()}" if context is not None else "(current run)"
     fig = px.line(ts, x="hour", y="avg_surge", template=TEMPLATE,
-                  title="Average Surge Multiplier Over a Simulated Day")
+                  title=f"Average Surge Multiplier Over a Simulated Day {suffix}")
     fig.update_layout(xaxis_title="Hour of day", yaxis_title="Average surge multiplier (city-wide)")
     fig.add_hline(y=1.0, line_dash="dot")
+    return fig
+
+
+MAP_METRIC_OPTIONS = {
+    "Marketplace status": ("status_code", "status_label", "RdYlGn", True),
+    "Demand (req/min)": ("demand_per_min", None, "Oranges", False),
+    "Available drivers": ("avg_available_drivers", None, "Blues", False),
+    "Supply/demand ratio": ("supply_demand_ratio", None, "RdYlGn", False),
+    "P90 wait (min)": ("p90_wait_min", None, "Reds", False),
+    "Cancellation rate": ("cancellation_rate", None, "Reds", False),
+    "Surge multiplier": ("avg_surge_multiplier", None, "Purples", False),
+}
+
+_STATUS_ORDER = {"severe_shortage": 0, "high_pressure": 1, "moderate": 2, "healthy": 3}
+
+
+def marketplace_map(zone_df: pd.DataFrame, metric_label: str, context=None) -> go.Figure:
+    """Synthetic-city zone map: each of the 10 zones (src/config.py ZONES,
+    fixed x/y grid coordinates) is one marker, sized by demand and colored
+    by the selected metric. Not a real geographic map -- there is no claim
+    about real-world geography here, just the simulator's own zone layout."""
+    from src.zone_state import STATUS_COLOR, STATUS_LABEL
+
+    df = zone_df.copy()
+    col, _hover_extra, colorscale, reversed_status = MAP_METRIC_OPTIONS[metric_label]
+    is_status = col == "status_code"
+
+    size = df["demand_per_min"] - df["demand_per_min"].min()
+    size = 22 + 28 * (size / size.max() if size.max() > 0 else 0)
+
+    marker = dict(size=size, line=dict(width=2, color="white"))
+    if is_status:
+        marker["color"] = [STATUS_COLOR[s] for s in df["status"]]
+        hover_value = df["status"].map(STATUS_LABEL)
+    else:
+        marker.update(color=df[col], colorscale=colorscale, reversescale=reversed_status,
+                       showscale=True, colorbar=dict(title=metric_label))
+        hover_value = df[col].round(2)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=df["x"], y=df["y"], mode="markers+text", marker=marker,
+        text=df["name"], textposition="top center", customdata=hover_value,
+        hovertemplate=f"<b>%{{text}}</b><br>{metric_label}: %{{customdata}}<extra></extra>",
+        showlegend=False,
+    ))
+    if is_status:
+        # discrete legend swatches -- a continuous colorbar doesn't read
+        # well for 4 categorical states
+        for status, hexcolor in STATUS_COLOR.items():
+            fig.add_trace(go.Scatter(
+                x=[None], y=[None], mode="markers",
+                marker=dict(size=12, color=hexcolor), name=STATUS_LABEL[status],
+            ))
+
+    suffix = f" {context.chart_suffix()}" if context is not None else ""
+    fig.update_layout(
+        title=f"Marketplace Map -- {metric_label}{suffix}",
+        xaxis=dict(visible=False), yaxis=dict(visible=False),
+        template=TEMPLATE, height=460,
+        legend=dict(orientation="h", yanchor="bottom", y=-0.15) if is_status else {},
+        margin=dict(l=10, r=10, t=60, b=10),
+    )
+    return fig
+
+
+def guardrail_bars(checks: list) -> go.Figure:
+    """checks: list[src.decision.GuardrailCheck]. One horizontal bar per
+    guardrail, filled to `utilization_pct` of its limit, red past 100%."""
+    labels = [f"{c.label} ({c.value:.2f} vs. limit {c.bound:.2f})" for c in checks]
+    pct = [min(c.utilization_pct, 120.0) for c in checks]
+    colors = ["#2ecc71" if c.passed else "#e74c3c" for c in checks]
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=pct, y=labels, orientation="h", marker_color=colors))
+    fig.add_vline(x=100, line_dash="dot", line_color="gray")
+    fig.update_layout(
+        title="Guardrail status (% of limit used)",
+        xaxis_title="% of guardrail limit", yaxis_title="",
+        template=TEMPLATE, height=120 + 40 * len(checks), showlegend=False,
+        margin=dict(l=10, r=10, t=50, b=10),
+    )
+    return fig
+
+
+def policy_tradeoff_scatter(
+    df: pd.DataFrame, current: tuple[str, str] | None = None, recommended: tuple[str, str] | None = None,
+) -> go.Figure:
+    """Like charts.policy_frontier but highlights the current and
+    recommended (pricing, dispatch) points so a viewer can see the tradeoff
+    being proposed, not just the whole cloud of policies."""
+    g = df.groupby(["pricing_policy", "dispatch_policy"], as_index=False).agg(
+        p90_wait_min=("p90_wait_min", "mean"), platform_revenue=("platform_revenue", "mean"),
+    )
+    g["label"] = g.pricing_policy + " + " + g.dispatch_policy
+    g["role"] = "other"
+    if current is not None:
+        g.loc[(g.pricing_policy == current[0]) & (g.dispatch_policy == current[1]), "role"] = "current"
+    if recommended is not None:
+        g.loc[(g.pricing_policy == recommended[0]) & (g.dispatch_policy == recommended[1]), "role"] = "recommended"
+
+    color_map = {"other": "#95a5a6", "current": "#3498db", "recommended": "#2ecc71"}
+    size_map = {"other": 10, "current": 18, "recommended": 20}
+    fig = go.Figure()
+    for role in ["other", "current", "recommended"]:
+        sub = g[g.role == role]
+        if sub.empty:
+            continue
+        fig.add_trace(go.Scatter(
+            x=sub.p90_wait_min, y=sub.platform_revenue, mode="markers", name=role.capitalize(),
+            marker=dict(size=size_map[role], color=color_map[role], line=dict(width=1, color="white")),
+            text=sub.label, hovertemplate="<b>%{text}</b><br>P90 wait: %{x:.2f} min<br>Revenue: %{y:.0f}<extra></extra>",
+        ))
+    fig.update_layout(
+        title="Policy Tradeoff: P90 Rider Wait vs. Platform Revenue",
+        xaxis_title="P90 rider wait (minutes, lower is better)", yaxis_title="Platform revenue (lower is worse)",
+        template=TEMPLATE, height=420,
+    )
     return fig
 
 

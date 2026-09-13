@@ -36,3 +36,27 @@ def test_zone_ranking_returns_all_zones():
     assert len(r["ranking"]) == 10
     ratios = [row["avg_supply_demand_ratio"] for row in r["ranking"]]
     assert ratios == sorted(ratios)  # worst (lowest) first
+
+
+def test_forecast_demand_unknown_zone():
+    r = ct.forecast_demand("Not A Real Zone")
+    assert "error" in r
+
+
+def test_forecast_demand_known_zone():
+    r = ct.forecast_demand("Downtown", scenario="PEAK_DEMAND", hour=9.0, seed=0)
+    assert "error" not in r, r
+    assert r["forecast_next_15min_demand"] >= 0.0
+    assert r["zone_name"] == "Downtown"
+
+
+def test_forecast_eta_unknown_zone():
+    r = ct.forecast_eta("Not A Real Zone")
+    assert "error" in r
+
+
+def test_forecast_eta_known_zone():
+    r = ct.forecast_eta("Downtown", scenario="PEAK_DEMAND", hour=9.0, segment="normal", seed=0)
+    assert "error" not in r, r
+    assert r["predicted_wait_min"] >= 0.0
+    assert r["zone_name"] == "Downtown"

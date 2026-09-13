@@ -60,6 +60,11 @@ HARD RULES:
    Never imply otherwise.
 6. Keep answers concise and PM-friendly: lead with the answer, then the
    supporting numbers and their source, then a one-line caveat if relevant.
+7. For a question that asks "what should we do" / "why did X happen" /
+   recommends an action, structure the answer with short labeled sections:
+   OBSERVATION, EVIDENCE, ROOT CAUSE (if diagnosing), RECOMMENDATION,
+   EXPECTED IMPACT, CONFIDENCE. For a simple factual lookup, just answer
+   directly -- don't force the template where it doesn't fit.
 """
 
 TOOLS = [
@@ -108,6 +113,35 @@ TOOLS = [
                 "dispatch_policy": {"type": "string", "default": "NEAREST_DRIVER"},
                 "seed": {"type": "integer", "default": 0},
             },
+        },
+    },
+    {
+        "name": "forecast_demand",
+        "description": "Forecast near-term (next 15-minute) ride demand for one zone at a given hour, using the trained ML demand model (not a guess) grounded in a live simulation run up to that hour. Use this for 'how much demand is coming in zone X soon' questions.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "zone_name": {"type": "string", "description": "One of the 10 zone names, e.g. 'Downtown', 'Airport', 'University'."},
+                "scenario": {"type": "string", "enum": ["NORMAL", "PEAK_DEMAND", "SUPPLY_SHORTAGE", "DEMAND_SHOCK", "LOW_DEMAND", "CONGESTED_PEAK"], "default": "NORMAL"},
+                "hour": {"type": "number", "default": 8.0, "description": "Hour of day (0-24) to forecast the next 15 minutes from."},
+                "seed": {"type": "integer", "default": 0},
+            },
+            "required": ["zone_name"],
+        },
+    },
+    {
+        "name": "forecast_eta",
+        "description": "Forecast the expected realized rider wait (request to pickup, in minutes) for one zone/hour/rider segment, using the trained ML wait-time model -- more accurate than a naive distance-only ETA because it accounts for real marketplace imbalance and surge. Use this for 'how long will a rider actually wait' questions.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "zone_name": {"type": "string", "description": "One of the 10 zone names."},
+                "scenario": {"type": "string", "enum": ["NORMAL", "PEAK_DEMAND", "SUPPLY_SHORTAGE", "DEMAND_SHOCK", "LOW_DEMAND", "CONGESTED_PEAK"], "default": "NORMAL"},
+                "hour": {"type": "number", "default": 8.0},
+                "segment": {"type": "string", "enum": ["price_sensitive", "normal", "time_sensitive"], "default": "normal"},
+                "seed": {"type": "integer", "default": 0},
+            },
+            "required": ["zone_name"],
         },
     },
     {
@@ -170,11 +204,12 @@ def resolve_provider() -> str:
     )
 
 
-def _ask_anthropic(question: str, max_turns: int, verbose: bool) -> str:
+def _ask_anthropic(question: str, max_turns: int, verbose: bool) -> tuple[str, list[dict]]:
     import anthropic  # imported lazily so the rest of the project works without the SDK/key
 
     client = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from the environment
     messages = [{"role": "user", "content": question}]
+    trace: list[dict] = []
 
     for _ in range(max_turns):
         response = client.messages.create(
@@ -183,7 +218,8 @@ def _ask_anthropic(question: str, max_turns: int, verbose: bool) -> str:
         messages.append({"role": "assistant", "content": response.content})
 
         if response.stop_reason != "tool_use":
-            return "".join(block.text for block in response.content if block.type == "text")
+            answer = "".join(block.text for block in response.content if block.type == "text")
+            return answer, trace
 
         tool_results = []
         for block in response.content:
@@ -192,6 +228,7 @@ def _ask_anthropic(question: str, max_turns: int, verbose: bool) -> str:
             if verbose:
                 print(f"[tool call] {block.name}({block.input})")
             result = _execute_tool(block.name, block.input)
+            trace.append({"name": block.name, "input": block.input, "result": result})
             tool_results.append({
                 "type": "tool_result",
                 "tool_use_id": block.id,
@@ -199,10 +236,10 @@ def _ask_anthropic(question: str, max_turns: int, verbose: bool) -> str:
             })
         messages.append({"role": "user", "content": tool_results})
 
-    return "Reached max tool-call turns without a final answer -- the question may be too complex or ambiguous."
+    return "Reached max tool-call turns without a final answer -- the question may be too complex or ambiguous.", trace
 
 
-def _ask_groq(question: str, max_turns: int, verbose: bool) -> str:
+def _ask_groq(question: str, max_turns: int, verbose: bool) -> tuple[str, list[dict]]:
     import groq  # imported lazily so the rest of the project works without the SDK/key
 
     client = groq.Groq()  # reads GROQ_API_KEY from the environment
@@ -211,6 +248,7 @@ def _ask_groq(question: str, max_turns: int, verbose: bool) -> str:
         {"role": "user", "content": question},
     ]
     tools = _openai_style_tools()
+    trace: list[dict] = []
 
     for _ in range(max_turns):
         response = client.chat.completions.create(
@@ -219,7 +257,7 @@ def _ask_groq(question: str, max_turns: int, verbose: bool) -> str:
         msg = response.choices[0].message
 
         if not msg.tool_calls:
-            return msg.content or ""
+            return msg.content or "", trace
 
         messages.append({
             "role": "assistant",
@@ -235,18 +273,29 @@ def _ask_groq(question: str, max_turns: int, verbose: bool) -> str:
             if verbose:
                 print(f"[tool call] {tc.function.name}({args})")
             result = _execute_tool(tc.function.name, args)
+            trace.append({"name": tc.function.name, "input": args, "result": result})
             messages.append({
                 "role": "tool", "tool_call_id": tc.id,
                 "content": json.dumps(result, default=str),
             })
 
-    return "Reached max tool-call turns without a final answer -- the question may be too complex or ambiguous."
+    return "Reached max tool-call turns without a final answer -- the question may be too complex or ambiguous.", trace
 
 
-def ask(question: str, max_turns: int = 6, verbose: bool = False) -> str:
+def ask_with_trace(question: str, max_turns: int = 6, verbose: bool = False) -> dict:
+    """Like ask(), but also returns the full tool-call trace (name, input,
+    result for every tool call made along the way) -- used by the dashboard
+    AI Copilot tab so the UI can show its work (which tools ran, on what,
+    with what result) instead of presenting the final text as an opaque
+    chatbot answer. See docs' AI-guardrails section: the answer text is not
+    trustworthy on its own without the trace behind it being inspectable."""
     provider = resolve_provider()
     if verbose:
         print(f"[provider] {provider}")
-    if provider == "groq":
-        return _ask_groq(question, max_turns, verbose)
-    return _ask_anthropic(question, max_turns, verbose)
+    fn = _ask_groq if provider == "groq" else _ask_anthropic
+    answer, trace = fn(question, max_turns, verbose)
+    return {"answer": answer, "tool_calls": trace, "provider": provider}
+
+
+def ask(question: str, max_turns: int = 6, verbose: bool = False) -> str:
+    return ask_with_trace(question, max_turns, verbose)["answer"]

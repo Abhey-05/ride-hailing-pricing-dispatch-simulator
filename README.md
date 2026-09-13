@@ -48,25 +48,58 @@ Simulation Engine (1-minute timesteps, 24h/day)
         ▼
 Results warehouse (results/*.csv, *.parquet — 1,080 runs)
         │
-        ├──▶ Statistical analysis (paired bootstrap CI, Wilcoxon, effect size)
-        ├──▶ Streamlit + Plotly dashboard  (dashboard/app.py)
-        ├──▶ FastAPI service              (api/main.py)
-        └──▶ AI Marketplace Analyst        (src/ai_copilot.py, Claude tool-calling)
+        ├──▶ Statistical analysis        (src/analysis.py: paired bootstrap CI, Wilcoxon, effect size)
+        │
+        ▼
+Decision-intelligence layer            (src/decision.py, src/zone_state.py)
+  ├─ Marketplace Health Score (4 weighted, empirically-normalized dimensions)
+  ├─ Guardrails (absolute + baseline-relative)
+  ├─ Policy recommendation (best overall vs. best under guardrails)
+  └─ Live counterfactual simulation (fresh paired run, real bootstrap CI)
+        │
+        ▼
+ML forecasting layer                   (src/ml_demand.py, src/ml_wait_time.py, src/ml_cancellation.py)
+  └─ Trained models persisted to models/*.joblib, used for live inference (no retraining)
+        │
+        ├──▶ Streamlit + Plotly dashboard   (dashboard/app.py — Overview, Marketplace Map, Experimentation, ...)
+        ├──▶ FastAPI service                (api/main.py)
+        └──▶ AI Marketplace Analyst         (src/ai_copilot.py, tool-calling over the layers above)
+                    │
+                    ▼
+            Human reviews recommendation → approves/runs counterfactual → (optionally) experiments further
 ```
+
+The AI layer sits strictly on top: it orchestrates and explains via tool calls into the layers above, and never computes a metric, forecast, or recommendation itself (docs/PRD.md "AI guardrails").
 
 Full design rationale, database schema (as it would be operationalized in production), and API docs: [`docs/SYSTEM_DESIGN.md`](docs/SYSTEM_DESIGN.md).
 
 ## What's actually implemented
 
+**Simulation & experimentation core:**
 - **Simulation engine** (`src/engine.py`): a from-scratch, time-stepped agent simulation — 10 zones, Poisson demand, logistic accept/cancel/dispatch-acceptance models, all specified in [`docs/MATHEMATICAL_MODEL.md`](docs/MATHEMATICAL_MODEL.md) *before* any code was written.
 - **4 pricing policies**: `NO_SURGE`, `BASIC_SURGE`, `AGGRESSIVE_SURGE`, `CAPPED_SMOOTHED_SURGE` (`src/pricing.py`).
 - **5 dispatch policies**: `NEAREST_DRIVER`, `ETA_OPTIMIZED`, `DRIVER_EARNINGS_AWARE`, `MARKETPLACE_AWARE`, `ADVANCED_HEURISTIC` (`src/dispatch.py`) — each a documented heuristic, explicitly *not* claimed to be globally optimal (see Math Model §H.5 for why an exact optimal-assignment solver isn't used).
 - **Experiment framework**: 1,080 runs with common-random-numbers variance reduction for paired statistical comparisons (`src/experiment_runner.py`, `src/world.py`).
 - **Statistical analysis**: bootstrap CIs, paired Wilcoxon + t-tests, effect sizes, a pre-registered practical-significance bar (`src/analysis.py`).
-- **34 automated tests** covering reproducibility, every invariant in the Validation Plan, and API endpoints (`tests/`).
-- **Streamlit dashboard** for live simulation + experiment browsing (`dashboard/app.py`).
+
+**Decision-intelligence layer** (`src/decision.py`, `src/zone_state.py`, `src/sim_context.py`) — sits on top of the engine, makes no independent claims:
+- **Marketplace Health Score**: 4 weighted dimensions (Rider Experience, Driver Experience, Marketplace Efficiency, Business Performance), each a documented blend of metrics normalized against the empirical 5th/95th percentiles of the 1,080-run matrix — not arbitrary targets.
+- **Guardrails**: absolute operational limits (cancellation, utilization, surge, driver earnings) plus baseline-relative guardrails (generalized from the decision table's own logic), surfaced as pass/fail with the specific binding constraint named.
+- **Policy recommendation**: `recommend_policy()` scores every pre-computed (pricing, dispatch) combo for a scenario against a documented, configurable marketplace-utility objective, and reports both the guardrail-passing recommendation *and* the unconstrained best (they are not always the same — see PM concept in `docs/PRD.md`).
+- **Live counterfactual simulation**: `run_counterfactual()` runs a fresh, paired, common-random-numbers comparison of any two policies on demand, with a real bootstrap CI and Wilcoxon p-value — not an estimate.
+- **Marketplace Map**: a spatial view over the existing 10-zone city (Plotly, zone x/y grid already in `src/config.py` — no new geo dependency), with a metric selector and per-zone click-through detail with a rule-based causal explanation.
+
+**ML layer** (`src/ml_cancellation.py`, `src/ml_demand.py`, `src/ml_wait_time.py`) — each with a documented target, features, leakage discipline, train/test split, and a naive baseline the model has to beat:
+- **Cancellation-risk prediction**: GBM vs. logistic regression vs. a rule-based baseline (AUC 0.82 vs. 0.78 vs. 0.55) — feature importance shows time-of-day and marketplace imbalance dominate, not rider patience (`train_cancellation_model.py`).
+- **Near-term demand forecasting**: predicts a zone's next-15-minute request volume from recent lags + time + available supply (GBM MAE 2.35 vs. a "same as last window" naive baseline's 3.01, R² 0.70 vs. 0.48) (`train_demand_model.py`).
+- **Realized wait-time prediction**: predicts a rider's actual request-to-pickup wait — not the simulator's already-deterministic distance-based ETA — from request-time marketplace conditions (GBM MAE 2.75 min vs. a naive distance/speed ETA's 8.12 min; dominant feature is marketplace imbalance, not distance) (`train_wait_time_model.py`).
+- Both forecasting models persist to `models/*.joblib` and are used for *live* inference (no retraining) by the AI Copilot's `forecast_demand` / `forecast_eta` tools.
+
+**Product surfaces:**
+- **Streamlit dashboard** (`dashboard/app.py`): Overview (health score, recommendation card, live counterfactual, map, policy tradeoff), a dedicated Marketplace Map tab, Pricing/Dispatch detail, Experimentation (best-policy card + progressive disclosure into the full 1,080-run matrix), and an AI Copilot tab.
 - **FastAPI service** exposing the engine and results (`api/main.py`).
-- **AI Marketplace Analyst**: an LLM tool-calling copilot that answers marketplace questions by calling deterministic functions against real results — it never computes a metric itself (`src/ai_copilot.py`, `src/copilot_tools.py`). Provider-agnostic: works with `ANTHROPIC_API_KEY` (Claude) or `GROQ_API_KEY` (Groq), verified live against both — see `docs/AI_COPILOT_TRANSCRIPT.md` for a real transcript.
+- **AI Marketplace Analyst**: an LLM tool-calling copilot (7 tools: pre-computed lookups, live what-if simulation, and the two ML forecast tools) that answers marketplace questions by calling deterministic functions against real results — it never computes a metric itself (`src/ai_copilot.py`, `src/copilot_tools.py`). Provider-agnostic: works with `ANTHROPIC_API_KEY` (Claude) or `GROQ_API_KEY` (Groq), verified live against both — see `docs/AI_COPILOT_TRANSCRIPT.md` for a real transcript. Every answer in the dashboard shows its full tool-call trace (name, input, result), not just the final text.
+- **79 automated tests** covering reproducibility, every invariant in the Validation Plan, API endpoints, the decision layer, zone aggregation, and both ML models (`tests/`).
 
 ## Setup & running it
 
@@ -96,17 +129,23 @@ python sensitivity_analysis.py
 # Train and compare the rule-based vs. ML cancellation-prediction models
 python train_cancellation_model.py
 
+# Train the demand-forecasting and wait-time-forecasting models
+# (persists to models/*.joblib -- the AI copilot's forecast tools need these)
+python train_demand_model.py
+python train_wait_time_model.py
+
 # Run the test suite
 pytest -q
 
-# Launch the dashboard
+# Launch the dashboard (Overview / Marketplace Map / Pricing / Dispatch / Experimentation / AI Copilot)
 streamlit run dashboard/app.py
 
 # Launch the API
 uvicorn api.main:app --reload
 
 # Ask the AI Marketplace Analyst (requires ANTHROPIC_API_KEY or GROQ_API_KEY)
-# put ONE of these in a local, gitignored .env file (auto-loaded), e.g.:
+# put ONE of these in a local, gitignored .env file (auto-loaded by both
+# ask_copilot.py and the dashboard's AI Copilot tab), e.g.:
 #   GROQ_API_KEY=gsk_...
 python ask_copilot.py "Which dispatch policy performs best, and is it statistically real?"
 # force a specific provider if both keys are set: AI_PROVIDER=groq python ask_copilot.py "..."

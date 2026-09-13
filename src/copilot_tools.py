@@ -15,9 +15,18 @@ from pathlib import Path
 
 import pandas as pd
 
-from src import config, engine, world
+from src import config, engine, ml_demand, ml_wait_time, world
 
 RESULTS_DIR = Path(__file__).resolve().parents[1] / "results"
+
+_ZONE_BY_NAME = {z.name.lower(): z for z in config.ZONES}
+
+
+def _resolve_zone(zone_name: str):
+    zone = _ZONE_BY_NAME.get(zone_name.strip().lower())
+    if zone is None:
+        return None
+    return zone
 
 
 def _load(name: str) -> pd.DataFrame:
@@ -118,10 +127,38 @@ def simulate_whatif(pricing_policy: str = "BASIC_SURGE", dispatch_policy: str = 
     }
 
 
+def forecast_demand(zone_name: str, scenario: str = "NORMAL", hour: float = 8.0, seed: int = 0) -> dict:
+    """Forecasts near-term (next 15-minute) ride demand for one zone at a
+    given hour, using the trained GBM demand model (src/ml_demand.py) fed
+    with real recent-demand and available-driver features taken from a live
+    simulation run up to that hour. The model supplies the number; this
+    tool never guesses one itself."""
+    zone = _resolve_zone(zone_name)
+    if zone is None:
+        return {"error": f"Unknown zone '{zone_name}'. Options: {[z.name for z in config.ZONES]}"}
+    return ml_demand.forecast_next_window(scenario, zone.id, hour, seed=seed)
+
+
+def forecast_eta(zone_name: str, scenario: str = "NORMAL", hour: float = 8.0, segment: str = "normal", seed: int = 0) -> dict:
+    """Forecasts the expected REALIZED wait (request to pickup) for a rider
+    of the given segment requesting in one zone at a given hour -- a
+    learned estimate that accounts for marketplace imbalance and surge, not
+    just pickup distance (see src/ml_wait_time.py for why the naive
+    distance/speed ETA isn't a useful ML target in this simulator, and what
+    this predicts instead). Grounding features come from a live simulation
+    run up to that hour, same as forecast_demand."""
+    zone = _resolve_zone(zone_name)
+    if zone is None:
+        return {"error": f"Unknown zone '{zone_name}'. Options: {[z.name for z in config.ZONES]}"}
+    return ml_wait_time.predict_wait_time(scenario, zone.id, hour, segment=segment, seed=seed)
+
+
 TOOL_REGISTRY = {
     "get_policy_metrics": get_policy_metrics,
     "compare_dispatch_to_baseline": compare_dispatch_to_baseline,
     "get_decision_table": get_decision_table,
     "get_zone_supply_demand_ranking": get_zone_supply_demand_ranking,
     "simulate_whatif": simulate_whatif,
+    "forecast_demand": forecast_demand,
+    "forecast_eta": forecast_eta,
 }

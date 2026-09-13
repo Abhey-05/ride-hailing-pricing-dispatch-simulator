@@ -16,27 +16,11 @@ Usage:
 """
 from __future__ import annotations
 
-import os
 import sys
-from pathlib import Path
 
+from src.env_utils import load_dotenv  # noqa: E402
 
-def _load_dotenv():
-    """Minimal .env loader (no new dependency) -- reads KEY=VALUE lines from
-    a .env file next to this script, without overriding already-set env
-    vars. .env is gitignored; this is only ever read locally."""
-    env_path = Path(__file__).parent / ".env"
-    if not env_path.exists():
-        return
-    for line in env_path.read_text().splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        os.environ.setdefault(key.strip(), value.strip())
-
-
-_load_dotenv()
+load_dotenv()
 
 from src.ai_copilot import ask, resolve_provider  # noqa: E402
 
