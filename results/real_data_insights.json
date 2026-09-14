@@ -1,0 +1,947 @@
+{
+  "generated_at_unix": 1789391989.81587,
+  "source_row_count": 450000,
+  "schema": {
+    "row_count": 450000,
+    "columns_present": [
+      "order_time",
+      "order_id",
+      "order_date",
+      "allot_time",
+      "accept_time",
+      "pickup_time",
+      "delivered_time",
+      "rider_id",
+      "first_mile_distance",
+      "last_mile_distance",
+      "alloted_orders",
+      "delivered_orders",
+      "cancelled",
+      "undelivered_orders",
+      "lifetime_order_count",
+      "reassignment_method",
+      "reassignment_reason",
+      "reassigned_order",
+      "session_time",
+      "cancelled_time"
+    ],
+    "columns_missing": [],
+    "extra_columns": [],
+    "dtypes": {
+      "order_time": "str",
+      "order_id": "int64",
+      "order_date": "str",
+      "allot_time": "str",
+      "accept_time": "str",
+      "pickup_time": "str",
+      "delivered_time": "str",
+      "rider_id": "int64",
+      "first_mile_distance": "float64",
+      "last_mile_distance": "float64",
+      "alloted_orders": "float64",
+      "delivered_orders": "float64",
+      "cancelled": "int64",
+      "undelivered_orders": "float64",
+      "lifetime_order_count": "float64",
+      "reassignment_method": "str",
+      "reassignment_reason": "str",
+      "reassigned_order": "float64",
+      "session_time": "float64",
+      "cancelled_time": "str"
+    },
+    "null_counts": {
+      "order_time": 0,
+      "order_id": 0,
+      "order_date": 0,
+      "allot_time": 0,
+      "accept_time": 157,
+      "pickup_time": 2421,
+      "delivered_time": 5218,
+      "rider_id": 0,
+      "first_mile_distance": 0,
+      "last_mile_distance": 0,
+      "alloted_orders": 16948,
+      "delivered_orders": 17341,
+      "cancelled": 0,
+      "undelivered_orders": 17341,
+      "lifetime_order_count": 53,
+      "reassignment_method": 436256,
+      "reassignment_reason": 436247,
+      "reassigned_order": 436247,
+      "session_time": 3675,
+      "cancelled_time": 444782
+    },
+    "null_pct": {
+      "order_time": 0.0,
+      "order_id": 0.0,
+      "order_date": 0.0,
+      "allot_time": 0.0,
+      "accept_time": 0.0349,
+      "pickup_time": 0.538,
+      "delivered_time": 1.1596,
+      "rider_id": 0.0,
+      "first_mile_distance": 0.0,
+      "last_mile_distance": 0.0,
+      "alloted_orders": 3.7662,
+      "delivered_orders": 3.8536,
+      "cancelled": 0.0,
+      "undelivered_orders": 3.8536,
+      "lifetime_order_count": 0.0118,
+      "reassignment_method": 96.9458,
+      "reassignment_reason": 96.9438,
+      "reassigned_order": 96.9438,
+      "session_time": 0.8167,
+      "cancelled_time": 98.8404
+    },
+    "duplicate_rows": 1,
+    "duplicate_order_ids": 1
+  },
+  "timestamp_parse_report": {
+    "order_time_parse_failures": 0,
+    "allot_time_parse_failures": 0,
+    "accept_time_parse_failures": 0,
+    "pickup_time_parse_failures": 0,
+    "delivered_time_parse_failures": 0,
+    "cancelled_time_parse_failures": 0
+  },
+  "derive_metrics_report": {
+    "rows_before": 450000,
+    "duplicate_rows_dropped": 1,
+    "rows_after_dedup": 449999,
+    "invalid_timestamp_order_rows": 35,
+    "implausible_duration_rows": 287,
+    "rows_excluded_from_timing_analysis": 322,
+    "rows_valid_for_timing_analysis": 449677
+  },
+  "insights": {
+    "overview": {
+      "row_count": 449999,
+      "unique_orders": 449999,
+      "unique_riders": 19537,
+      "date_min": "2021-01-26",
+      "date_max": "2021-02-06",
+      "completion_rate": 0.9884,
+      "cancellation_rate": 0.0116,
+      "undelivered_rate": 0.0,
+      "reassignment_rate": 0.0306,
+      "median_end_to_end_min": 29.32,
+      "median_first_mile_km": 1.139,
+      "median_last_mile_km": 2.67
+    },
+    "funnel": [
+      {
+        "stage": "Order placed",
+        "count": 449999,
+        "conversion_from_order_pct": 100.0,
+        "conversion_from_previous_pct": 100.0,
+        "median_min_from_order": 0.0,
+        "p90_min_from_order": 0.0
+      },
+      {
+        "stage": "Allotted",
+        "count": 449999,
+        "conversion_from_order_pct": 100.0,
+        "conversion_from_previous_pct": 100.0,
+        "median_min_from_order": 0.25,
+        "p90_min_from_order": 1.6
+      },
+      {
+        "stage": "Accepted",
+        "count": 449842,
+        "conversion_from_order_pct": 99.97,
+        "conversion_from_previous_pct": 99.97,
+        "median_min_from_order": 1.07,
+        "p90_min_from_order": 4.35
+      },
+      {
+        "stage": "Picked up",
+        "count": 447579,
+        "conversion_from_order_pct": 99.46,
+        "conversion_from_previous_pct": 99.5,
+        "median_min_from_order": 14.15,
+        "p90_min_from_order": 26.98
+      },
+      {
+        "stage": "Delivered",
+        "count": 444782,
+        "conversion_from_order_pct": 98.84,
+        "conversion_from_previous_pct": 99.38,
+        "median_min_from_order": 29.32,
+        "p90_min_from_order": 47.7
+      }
+    ],
+    "delay_diagnostics": {
+      "Order -> Allotment": {
+        "median": 0.25,
+        "p75": 0.8,
+        "p90": 1.6,
+        "n": 449677,
+        "histogram": [
+          {
+            "bin_start": 0.0,
+            "bin_end": 1.56,
+            "count": 403610
+          },
+          {
+            "bin_start": 1.56,
+            "bin_end": 3.11,
+            "count": 19316
+          },
+          {
+            "bin_start": 3.11,
+            "bin_end": 4.67,
+            "count": 6164
+          },
+          {
+            "bin_start": 4.67,
+            "bin_end": 6.22,
+            "count": 2613
+          },
+          {
+            "bin_start": 6.22,
+            "bin_end": 7.78,
+            "count": 1689
+          },
+          {
+            "bin_start": 7.78,
+            "bin_end": 9.33,
+            "count": 1480
+          },
+          {
+            "bin_start": 9.33,
+            "bin_end": 10.89,
+            "count": 1280
+          },
+          {
+            "bin_start": 10.89,
+            "bin_end": 12.44,
+            "count": 1004
+          },
+          {
+            "bin_start": 12.44,
+            "bin_end": 14.0,
+            "count": 946
+          },
+          {
+            "bin_start": 14.0,
+            "bin_end": 15.56,
+            "count": 3026
+          },
+          {
+            "bin_start": 15.56,
+            "bin_end": 17.11,
+            "count": 3192
+          },
+          {
+            "bin_start": 17.11,
+            "bin_end": 18.67,
+            "count": 861
+          }
+        ]
+      },
+      "Allotment -> Acceptance": {
+        "median": 0.62,
+        "p75": 1.05,
+        "p90": 1.9,
+        "n": 449520,
+        "histogram": [
+          {
+            "bin_start": 0.03,
+            "bin_end": 0.78,
+            "count": 272928
+          },
+          {
+            "bin_start": 0.78,
+            "bin_end": 1.53,
+            "count": 115585
+          },
+          {
+            "bin_start": 1.53,
+            "bin_end": 2.27,
+            "count": 23437
+          },
+          {
+            "bin_start": 2.27,
+            "bin_end": 3.02,
+            "count": 8938
+          },
+          {
+            "bin_start": 3.02,
+            "bin_end": 3.77,
+            "count": 6062
+          },
+          {
+            "bin_start": 3.77,
+            "bin_end": 4.52,
+            "count": 4486
+          },
+          {
+            "bin_start": 4.52,
+            "bin_end": 5.26,
+            "count": 3588
+          },
+          {
+            "bin_start": 5.26,
+            "bin_end": 6.01,
+            "count": 2939
+          },
+          {
+            "bin_start": 6.01,
+            "bin_end": 6.76,
+            "count": 2374
+          },
+          {
+            "bin_start": 6.76,
+            "bin_end": 7.51,
+            "count": 1896
+          },
+          {
+            "bin_start": 7.51,
+            "bin_end": 8.25,
+            "count": 1555
+          },
+          {
+            "bin_start": 8.25,
+            "bin_end": 9.0,
+            "count": 1254
+          }
+        ]
+      },
+      "Acceptance -> Pickup": {
+        "median": 12.15,
+        "p75": 17.53,
+        "p90": 24.03,
+        "n": 447281,
+        "histogram": [
+          {
+            "bin_start": 0.07,
+            "bin_end": 3.57,
+            "count": 10948
+          },
+          {
+            "bin_start": 3.57,
+            "bin_end": 7.08,
+            "count": 64644
+          },
+          {
+            "bin_start": 7.08,
+            "bin_end": 10.58,
+            "count": 102977
+          },
+          {
+            "bin_start": 10.58,
+            "bin_end": 14.09,
+            "count": 92261
+          },
+          {
+            "bin_start": 14.09,
+            "bin_end": 17.59,
+            "count": 65619
+          },
+          {
+            "bin_start": 17.59,
+            "bin_end": 21.1,
+            "count": 42978
+          },
+          {
+            "bin_start": 21.1,
+            "bin_end": 24.61,
+            "count": 26620
+          },
+          {
+            "bin_start": 24.61,
+            "bin_end": 28.11,
+            "count": 15753
+          },
+          {
+            "bin_start": 28.11,
+            "bin_end": 31.62,
+            "count": 9608
+          },
+          {
+            "bin_start": 31.62,
+            "bin_end": 35.12,
+            "count": 5623
+          },
+          {
+            "bin_start": 35.12,
+            "bin_end": 38.63,
+            "count": 3524
+          },
+          {
+            "bin_start": 38.63,
+            "bin_end": 42.13,
+            "count": 2256
+          }
+        ]
+      },
+      "Pickup -> Delivery": {
+        "median": 13.63,
+        "p75": 19.13,
+        "p90": 25.93,
+        "n": 444494,
+        "histogram": [
+          {
+            "bin_start": 0.07,
+            "bin_end": 4.07,
+            "count": 7275
+          },
+          {
+            "bin_start": 4.07,
+            "bin_end": 8.08,
+            "count": 66277
+          },
+          {
+            "bin_start": 8.08,
+            "bin_end": 12.09,
+            "count": 108042
+          },
+          {
+            "bin_start": 12.09,
+            "bin_end": 16.1,
+            "count": 97522
+          },
+          {
+            "bin_start": 16.1,
+            "bin_end": 20.11,
+            "count": 67830
+          },
+          {
+            "bin_start": 20.11,
+            "bin_end": 24.12,
+            "count": 40869
+          },
+          {
+            "bin_start": 24.12,
+            "bin_end": 28.12,
+            "count": 23216
+          },
+          {
+            "bin_start": 28.12,
+            "bin_end": 32.13,
+            "count": 12997
+          },
+          {
+            "bin_start": 32.13,
+            "bin_end": 36.14,
+            "count": 7360
+          },
+          {
+            "bin_start": 36.14,
+            "bin_end": 40.15,
+            "count": 4351
+          },
+          {
+            "bin_start": 40.15,
+            "bin_end": 44.16,
+            "count": 2706
+          },
+          {
+            "bin_start": 44.16,
+            "bin_end": 48.17,
+            "count": 1604
+          }
+        ]
+      },
+      "Order -> Delivery (end-to-end)": {
+        "median": 29.32,
+        "p75": 37.72,
+        "p90": 47.7,
+        "n": 444494,
+        "histogram": [
+          {
+            "bin_start": 1.05,
+            "bin_end": 7.34,
+            "count": 354
+          },
+          {
+            "bin_start": 7.34,
+            "bin_end": 13.64,
+            "count": 11429
+          },
+          {
+            "bin_start": 13.64,
+            "bin_end": 19.93,
+            "count": 58672
+          },
+          {
+            "bin_start": 19.93,
+            "bin_end": 26.23,
+            "count": 100311
+          },
+          {
+            "bin_start": 26.23,
+            "bin_end": 32.52,
+            "count": 100351
+          },
+          {
+            "bin_start": 32.52,
+            "bin_end": 38.82,
+            "count": 72582
+          },
+          {
+            "bin_start": 38.82,
+            "bin_end": 45.11,
+            "count": 44364
+          },
+          {
+            "bin_start": 45.11,
+            "bin_end": 51.41,
+            "count": 24874
+          },
+          {
+            "bin_start": 51.41,
+            "bin_end": 57.7,
+            "count": 13384
+          },
+          {
+            "bin_start": 57.7,
+            "bin_end": 63.99,
+            "count": 7283
+          },
+          {
+            "bin_start": 63.99,
+            "bin_end": 70.29,
+            "count": 4062
+          },
+          {
+            "bin_start": 70.29,
+            "bin_end": 76.58,
+            "count": 2383
+          }
+        ]
+      }
+    },
+    "reassignment": {
+      "reassignment_rate": 0.0306,
+      "top_reasons": {
+        "Auto Reassignment basis Inaction. coreengine.tasks.repush_order_to_aa_bucket": 7212,
+        "Reassignment Request from SE portal.": 5300,
+        "Reassign": 1240
+      },
+      "methods": {
+        "auto": 13382,
+        "manual": 361
+      },
+      "reassigned": {
+        "n_orders": 13752,
+        "cancellation_rate": 0.0524,
+        "undelivered_rate": 0.0,
+        "acceptance_delay_median_min": 0.65,
+        "pickup_delay_median_min": 9.45,
+        "last_mile_median_min": 13.25,
+        "end_to_end_p90_min": 68.12
+      },
+      "not_reassigned": {
+        "n_orders": 436247,
+        "cancellation_rate": 0.0103,
+        "undelivered_rate": 0.0,
+        "acceptance_delay_median_min": 0.62,
+        "pickup_delay_median_min": 12.23,
+        "last_mile_median_min": 13.65,
+        "end_to_end_p90_min": 46.85
+      }
+    },
+    "distance": {
+      "first_mile_distance_buckets": [
+        {
+          "bucket": "0.00-0.54 km",
+          "n_orders": 112500,
+          "acceptance_delay_median_min": 0.63,
+          "pickup_delay_median_min": 11.2,
+          "end_to_end_median_min": 28.4,
+          "cancellation_rate": 0.011
+        },
+        {
+          "bucket": "0.54-1.14 km",
+          "n_orders": 112512,
+          "acceptance_delay_median_min": 0.65,
+          "pickup_delay_median_min": 11.92,
+          "end_to_end_median_min": 28.9,
+          "cancellation_rate": 0.0109
+        },
+        {
+          "bucket": "1.14-1.85 km",
+          "n_orders": 112496,
+          "acceptance_delay_median_min": 0.62,
+          "pickup_delay_median_min": 12.4,
+          "end_to_end_median_min": 29.53,
+          "cancellation_rate": 0.0112
+        },
+        {
+          "bucket": "1.85-42.04 km",
+          "n_orders": 112491,
+          "acceptance_delay_median_min": 0.55,
+          "pickup_delay_median_min": 13.07,
+          "end_to_end_median_min": 30.38,
+          "cancellation_rate": 0.0133
+        }
+      ],
+      "last_mile_distance_buckets": [
+        {
+          "bucket": "0.00-1.47 km",
+          "n_orders": 113100,
+          "acceptance_delay_median_min": 0.67,
+          "pickup_delay_median_min": 12.45,
+          "end_to_end_median_min": 24.43,
+          "cancellation_rate": 0.0099
+        },
+        {
+          "bucket": "1.47-2.67 km",
+          "n_orders": 112348,
+          "acceptance_delay_median_min": 0.63,
+          "pickup_delay_median_min": 12.32,
+          "end_to_end_median_min": 27.92,
+          "cancellation_rate": 0.0105
+        },
+        {
+          "bucket": "2.67-4.22 km",
+          "n_orders": 112251,
+          "acceptance_delay_median_min": 0.6,
+          "pickup_delay_median_min": 12.1,
+          "end_to_end_median_min": 30.58,
+          "cancellation_rate": 0.0112
+        },
+        {
+          "bucket": "4.22-22.41 km",
+          "n_orders": 112300,
+          "acceptance_delay_median_min": 0.53,
+          "pickup_delay_median_min": 11.78,
+          "end_to_end_median_min": 33.93,
+          "cancellation_rate": 0.0148
+        }
+      ]
+    },
+    "rider_segments": [
+      {
+        "segment": "High experience",
+        "n_riders": 6493,
+        "n_orders": 210793,
+        "acceptance_delay_median_min": 0.57,
+        "pickup_delay_median_min": 12.1,
+        "end_to_end_median_min": 28.47,
+        "reassignment_rate": 0.0324,
+        "cancellation_rate": 0.0086
+      },
+      {
+        "segment": "Low experience",
+        "n_riders": 6529,
+        "n_orders": 74101,
+        "acceptance_delay_median_min": 0.7,
+        "pickup_delay_median_min": 12.45,
+        "end_to_end_median_min": 31.23,
+        "reassignment_rate": 0.0269,
+        "cancellation_rate": 0.0219
+      },
+      {
+        "segment": "Medium experience",
+        "n_riders": 6478,
+        "n_orders": 165052,
+        "acceptance_delay_median_min": 0.62,
+        "pickup_delay_median_min": 12.1,
+        "end_to_end_median_min": 29.58,
+        "reassignment_rate": 0.0298,
+        "cancellation_rate": 0.0105
+      }
+    ],
+    "time_of_day": [
+      {
+        "hour": 0,
+        "n_orders": 2,
+        "acceptance_delay_median_min": 0.37,
+        "end_to_end_median_min": 32.6,
+        "cancellation_rate": 0.0,
+        "reassignment_rate": 0.0
+      },
+      {
+        "hour": 1,
+        "n_orders": 2,
+        "acceptance_delay_median_min": 0.36,
+        "end_to_end_median_min": 36.43,
+        "cancellation_rate": 0.0,
+        "reassignment_rate": 0.0
+      },
+      {
+        "hour": 2,
+        "n_orders": 61,
+        "acceptance_delay_median_min": 0.38,
+        "end_to_end_median_min": 26.4,
+        "cancellation_rate": 0.0328,
+        "reassignment_rate": 0.0328
+      },
+      {
+        "hour": 3,
+        "n_orders": 645,
+        "acceptance_delay_median_min": 0.48,
+        "end_to_end_median_min": 30.33,
+        "cancellation_rate": 0.014,
+        "reassignment_rate": 0.0465
+      },
+      {
+        "hour": 4,
+        "n_orders": 1211,
+        "acceptance_delay_median_min": 0.53,
+        "end_to_end_median_min": 30.33,
+        "cancellation_rate": 0.0091,
+        "reassignment_rate": 0.0314
+      },
+      {
+        "hour": 5,
+        "n_orders": 1089,
+        "acceptance_delay_median_min": 0.67,
+        "end_to_end_median_min": 30.9,
+        "cancellation_rate": 0.0156,
+        "reassignment_rate": 0.0248
+      },
+      {
+        "hour": 6,
+        "n_orders": 22886,
+        "acceptance_delay_median_min": 0.57,
+        "end_to_end_median_min": 31.1,
+        "cancellation_rate": 0.0097,
+        "reassignment_rate": 0.0246
+      },
+      {
+        "hour": 7,
+        "n_orders": 37651,
+        "acceptance_delay_median_min": 0.63,
+        "end_to_end_median_min": 29.77,
+        "cancellation_rate": 0.0092,
+        "reassignment_rate": 0.0271
+      },
+      {
+        "hour": 8,
+        "n_orders": 37553,
+        "acceptance_delay_median_min": 0.68,
+        "end_to_end_median_min": 28.63,
+        "cancellation_rate": 0.0105,
+        "reassignment_rate": 0.0312
+      },
+      {
+        "hour": 9,
+        "n_orders": 22245,
+        "acceptance_delay_median_min": 0.67,
+        "end_to_end_median_min": 28.18,
+        "cancellation_rate": 0.0115,
+        "reassignment_rate": 0.0342
+      },
+      {
+        "hour": 10,
+        "n_orders": 8904,
+        "acceptance_delay_median_min": 0.67,
+        "end_to_end_median_min": 29.38,
+        "cancellation_rate": 0.013,
+        "reassignment_rate": 0.0454
+      },
+      {
+        "hour": 11,
+        "n_orders": 8134,
+        "acceptance_delay_median_min": 0.62,
+        "end_to_end_median_min": 29.76,
+        "cancellation_rate": 0.0124,
+        "reassignment_rate": 0.0409
+      },
+      {
+        "hour": 12,
+        "n_orders": 9262,
+        "acceptance_delay_median_min": 0.62,
+        "end_to_end_median_min": 30.6,
+        "cancellation_rate": 0.012,
+        "reassignment_rate": 0.0407
+      },
+      {
+        "hour": 13,
+        "n_orders": 43407,
+        "acceptance_delay_median_min": 0.5,
+        "end_to_end_median_min": 31.65,
+        "cancellation_rate": 0.0106,
+        "reassignment_rate": 0.0225
+      },
+      {
+        "hour": 14,
+        "n_orders": 70587,
+        "acceptance_delay_median_min": 0.62,
+        "end_to_end_median_min": 31.43,
+        "cancellation_rate": 0.0137,
+        "reassignment_rate": 0.0376
+      },
+      {
+        "hour": 15,
+        "n_orders": 66183,
+        "acceptance_delay_median_min": 0.63,
+        "end_to_end_median_min": 29.33,
+        "cancellation_rate": 0.0106,
+        "reassignment_rate": 0.0285
+      },
+      {
+        "hour": 16,
+        "n_orders": 66326,
+        "acceptance_delay_median_min": 0.62,
+        "end_to_end_median_min": 27.65,
+        "cancellation_rate": 0.0112,
+        "reassignment_rate": 0.0294
+      },
+      {
+        "hour": 17,
+        "n_orders": 53648,
+        "acceptance_delay_median_min": 0.58,
+        "end_to_end_median_min": 26.67,
+        "cancellation_rate": 0.0141,
+        "reassignment_rate": 0.0291
+      },
+      {
+        "hour": 18,
+        "n_orders": 168,
+        "acceptance_delay_median_min": 0.53,
+        "end_to_end_median_min": 25.88,
+        "cancellation_rate": 0.0238,
+        "reassignment_rate": 0.0179
+      },
+      {
+        "hour": 19,
+        "n_orders": 25,
+        "acceptance_delay_median_min": 0.4,
+        "end_to_end_median_min": 27.89,
+        "cancellation_rate": 0.04,
+        "reassignment_rate": 0.0
+      },
+      {
+        "hour": 20,
+        "n_orders": 8,
+        "acceptance_delay_median_min": 0.22,
+        "end_to_end_median_min": 28.02,
+        "cancellation_rate": 0.125,
+        "reassignment_rate": 0.0
+      },
+      {
+        "hour": 21,
+        "n_orders": 2,
+        "acceptance_delay_median_min": 0.13,
+        "end_to_end_median_min": 38.47,
+        "cancellation_rate": 0.0,
+        "reassignment_rate": 0.0
+      }
+    ],
+    "opportunities": [
+      {
+        "problem": "Experience-linked outcome gap",
+        "observation": "Low-experience riders had a median end-to-end time of 31.2 min vs. 28.5 min for high-experience riders (+2.8 min), and a reassignment rate of 2.7% vs. 3.2%.",
+        "hypothesis": "Experience-aware allocation (e.g. routing simpler/shorter orders to newer riders, or pairing new riders with more forgiving zones) may reduce the outcome gap.",
+        "metric_to_optimize": "End-to-end time and reassignment rate for the low-experience segment",
+        "risks_guardrails": "Segmenting by experience could reduce new-rider order volume/earnings if applied too aggressively -- watch new-rider retention and earnings.",
+        "candidate_methods": [
+          "Experience-aware allocation",
+          "Onboarding-zone restriction",
+          "Graduated order complexity"
+        ],
+        "simulator_test": "Candidate future policy -- not currently simulated (the simulator has no driver-experience dimension).",
+        "priority_score": 2.7600000000000016
+      },
+      {
+        "problem": "First-mile distance friction",
+        "observation": "Orders in the longest first-mile-distance bucket (1.85-42.04 km) showed a median end-to-end time of 30.4 min vs. 28.4 min in the shortest bucket (0.00-0.54 km), a difference of +2.0 min, and a cancellation rate of 1.33% vs. 1.10% (+0.23 pp). (Acceptance delay itself showed no meaningful relationship with distance.)",
+        "hypothesis": "Distance-aware dispatch (weighting candidate proximity more heavily, or capping maximum assignment distance) may reduce end-to-end time and cancellation for long first-mile orders.",
+        "metric_to_optimize": "End-to-end time and cancellation rate for long-distance orders",
+        "risks_guardrails": "Over-weighting proximity could reduce match rate in low-density zones or increase load imbalance across partners -- watch completion rate and partner utilization.",
+        "candidate_methods": [
+          "Distance-aware dispatch",
+          "ETA prediction",
+          "Zone-aware allocation"
+        ],
+        "simulator_test": "Existing simulator's ETA_OPTIMIZED and NEAREST_DRIVER dispatch policies both incorporate distance; compare P90 wait and avg pickup distance across scenarios as a proxy for this hypothesis.",
+        "priority_score": 2.2100000000000004
+      },
+      {
+        "problem": "Reassignment friction",
+        "observation": "3.1% of orders were reassigned. Reassigned orders had a P90 end-to-end time of 68.1 min vs. 46.9 min for non-reassigned orders (+45%), and a cancellation rate of 5.2% vs. 1.0%.",
+        "hypothesis": "Improving initial candidate assignment (better ranking, acceptance-probability-aware selection) could reduce the reassignment rate and the delay it is associated with.",
+        "metric_to_optimize": "Order -> Delivery P90 time; reassignment rate",
+        "risks_guardrails": "A stricter initial-assignment policy could reduce driver/partner choice or increase decline rate if pushed too far -- watch acceptance rate and partner earnings.",
+        "candidate_methods": [
+          "Better candidate ranking",
+          "Acceptance-probability modeling",
+          "Assignment confidence scoring",
+          "Backup rider pre-selection"
+        ],
+        "simulator_test": "Existing simulator can test assignment-quality effects via ETA_OPTIMIZED vs. NEAREST_DRIVER (dispatch policy comparison) as a partial proxy -- reassignment itself is not currently modeled in the simulator.",
+        "priority_score": 1.3892465314834581
+      },
+      {
+        "problem": "Time-of-day operational pressure",
+        "observation": "Hour 05:00 showed a cancellation rate of 1.6% vs. a median of 1.1% across all hours, with 1089 orders in that hour.",
+        "hypothesis": "This hour shows high operational pressure; demand-aware incentives or dispatch prioritization during this window may reduce cancellations.",
+        "metric_to_optimize": "Cancellation rate during high-pressure hours",
+        "risks_guardrails": "Blanket incentives could raise cost without addressing the underlying assignment friction -- watch cost per delivered order alongside cancellation rate.",
+        "candidate_methods": [
+          "Demand-aware incentives",
+          "Dispatch prioritization",
+          "ETA-based ranking",
+          "Targeted surge/incentive experiments"
+        ],
+        "simulator_test": "Existing simulator's PEAK_DEMAND / SUPPLY_SHORTAGE scenarios and pricing policies (AGGRESSIVE_SURGE etc.) can be used to test demand-throttling hypotheses for this kind of high-pressure window.",
+        "priority_score": 0.4099999999999999
+      }
+    ]
+  },
+  "simulator_baseline": {
+    "p90_wait_min": 10.25,
+    "median_wait_min": 2.08,
+    "cancellation_rate": 0.2056,
+    "completion_rate": 0.553,
+    "avg_pickup_distance_km": 1.416,
+    "policy_label": "BASIC_SURGE + NEAREST_DRIVER",
+    "scenario": "NORMAL"
+  },
+  "calibration": [
+    {
+      "metric": "Time to pickup (P90)",
+      "real_value": 26.98,
+      "simulator_value": 10.25,
+      "unit": "min",
+      "difference": 16.73,
+      "relative_diff_pct": 163.2,
+      "status": "significant_mismatch",
+      "note": "Order -> pickup time (real) vs. rider P90 wait-for-pickup (simulator) -- both measure request-to-physical-pickup."
+    },
+    {
+      "metric": "Cancellation rate",
+      "real_value": 1.16,
+      "simulator_value": 20.56,
+      "unit": "%",
+      "difference": -19.4,
+      "relative_diff_pct": -94.4,
+      "status": "significant_mismatch",
+      "note": "Share of orders/requests that did not result in a completed delivery/trip."
+    },
+    {
+      "metric": "Completion rate",
+      "real_value": 98.84,
+      "simulator_value": 55.3,
+      "unit": "%",
+      "difference": 43.54,
+      "relative_diff_pct": 78.7,
+      "status": "significant_mismatch",
+      "note": "Share of orders/requests that completed successfully."
+    },
+    {
+      "metric": "Pickup-leg distance (median/mean)",
+      "real_value": 1.139,
+      "simulator_value": 1.416,
+      "unit": "km",
+      "difference": -0.277,
+      "relative_diff_pct": -19.6,
+      "status": "needs_calibration",
+      "note": "Real: median first-mile distance. Simulator: mean pickup distance. Not the same statistic, shown together as a rough scale check only."
+    },
+    {
+      "metric": "Reassignment rate",
+      "real_value": 3.06,
+      "simulator_value": null,
+      "unit": "%",
+      "difference": null,
+      "relative_diff_pct": null,
+      "status": "not_modeled",
+      "note": "The simulator does not currently model post-acceptance reassignment -- no comparable simulator number exists."
+    }
+  ]
+}

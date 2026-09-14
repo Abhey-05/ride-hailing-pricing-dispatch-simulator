@@ -100,6 +100,7 @@ Full design rationale, database schema (as it would be operationalized in produc
 - **FastAPI service** exposing the engine and results (`api/main.py`).
 - **AI Marketplace Analyst**: an LLM tool-calling copilot (8 tools: pre-computed lookups, the objective-aware recommendation engine, live what-if simulation, and the two ML forecast tools) that answers marketplace questions by calling deterministic functions against real results — it never computes a metric itself (`src/ai_copilot.py`, `src/copilot_tools.py`). Provider-agnostic: works with `ANTHROPIC_API_KEY` (Claude) or `GROQ_API_KEY` (Groq), verified live against both — see `docs/AI_COPILOT_TRANSCRIPT.md` for a real transcript. Every answer in the dashboard shows its full tool-call trace (name, input, result), not just the final text.
 - **99 automated tests** covering reproducibility, every invariant in the Validation Plan, API endpoints, the decision layer (including all 4 objective profiles), zone aggregation, both ML models, and centralized formatting/color logic (`tests/`).
+- **Real-World Validation** (`dashboard/pages/1_Real_World_Validation.py`): a separate, additive dashboard page -- not shown on Overview -- that diagnoses a real food-delivery operations dataset (funnel, delay stages, reassignment, distance/rider-experience patterns, time-of-day pressure), compares it to the simulator's own baseline for informational calibration, and generates evidence-grounded *hypotheses* for what to test in the simulator next. Never changes a simulator parameter automatically and never displays a raw order/rider ID. See `docs/REAL_DATA_VALIDATION.md`; 40 additional tests in `tests/test_real_data_*.py` (139 total).
 
 ## Setup & running it
 
@@ -170,6 +171,7 @@ Every run takes an explicit integer seed; `numpy.random.SeedSequence` (never Pyt
 | [`docs/PRODUCT_CASE_STUDY.md`](docs/PRODUCT_CASE_STUDY.md) | 5 mock PM case interviews built on this project |
 | [`docs/CRITICAL_REVIEW.md`](docs/CRITICAL_REVIEW.md) | A skeptical senior-PM review of this project's weaknesses, run honestly against itself |
 | [`docs/AI_COPILOT_TRANSCRIPT.md`](docs/AI_COPILOT_TRANSCRIPT.md) | Real, verified Q&A transcript from a live run of the AI copilot |
+| [`docs/REAL_DATA_VALIDATION.md`](docs/REAL_DATA_VALIDATION.md) | The separate Real-World Validation module: dataset inspection, pipeline, causality stance, privacy |
 | [`docs/CV_BULLETS.md`](docs/CV_BULLETS.md) | 5 CV bullet variants + fintech/Navi relevance discussion |
 | [`reports/FINAL_REPORT.md`](reports/FINAL_REPORT.md) | The condensed end-to-end project report |
 | [`presentation/project_presentation.pptx`](presentation/project_presentation.pptx) | 12-slide recruiter/interviewer-facing deck |

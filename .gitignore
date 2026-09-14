@@ -7,3 +7,9 @@ __pycache__/
 .ipynb_checkpoints/
 node_modules/
 .env
+
+# Raw real-world dataset for the Real-World Validation module: contains
+# row-level order_id/rider_id and is 85MB+ -- never committed. Only the
+# aggregated, anonymized results/real_data_insights.json (produced by
+# precompute_real_data_insights.py) is tracked.
+Rider-Info.csv
