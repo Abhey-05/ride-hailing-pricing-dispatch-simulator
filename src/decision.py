@@ -48,6 +48,17 @@ NORMALIZATION_BANDS: dict[str, tuple[str, float, float]] = {
     "north_star_trips_per_online_hour": ("higher", 2.3879, 1.3033),
     "avg_pickup_distance_km": ("lower", 1.1595, 1.8812),
     "platform_revenue": ("higher", 119_624.55, 61_248.76),
+    # price_index (realized price / no-surge base fare) -- the ONE metric
+    # that directly represents rider cost, as opposed to rider EXPERIENCE
+    # (wait/cancellation/completion). Added specifically so an objective
+    # profile can penalize price directly: p5/p95 of results/results.csv.
+    # Audit finding (see CHANGELOG "Objective audit"): without this band,
+    # no objective term could ever penalize a policy for charging riders
+    # more, which is why AGGRESSIVE_SURGE won under every weighting that
+    # only used the metrics above -- surge mechanically helps revenue,
+    # earnings, wait, AND cancellation simultaneously in this model, with
+    # its only cost (price) previously invisible to the objective.
+    "price_index": ("lower", 1.00, 1.12),
 }
 
 
@@ -215,26 +226,81 @@ def evaluate_guardrails_relative(candidate: dict, baseline: dict, tolerance: dic
 
 
 # ---------------------------------------------------------------------------
-# Policy optimization objective
+# Policy optimization objective profiles
 # ---------------------------------------------------------------------------
-DEFAULT_OBJECTIVE_WEIGHTS: dict[str, float] = {
-    "completion_rate": 0.35,
-    "platform_revenue": 0.25,
-    "earnings_per_online_hour_mean": 0.20,
-    "p90_wait_min": 0.20,
+# Four named objectives, each a normalized weighted blend of real metrics
+# (weights sum to 1.0; every metric referenced has a NORMALIZATION_BANDS
+# entry). These are NOT arbitrary -- they were checked against the actual
+# 1,080-run matrix before being fixed here (see CHANGELOG "Objective
+# audit"): each was verified to produce a genuinely different recommended
+# policy from the others in at least some scenarios, and to converge with
+# the others under severe-stress scenarios where aggressive demand-
+# throttling turns out to help every stakeholder at once -- that
+# convergence is a real property of the model, not something forced.
+#
+# RIDER_FIRST is the one profile that weighs price_index (rider cost)
+# directly, alongside wait and cancellation (rider experience) -- without
+# it, no profile can ever penalize a policy for charging more, which is
+# exactly the gap the audit found in the old single default objective.
+OBJECTIVE_PROFILES: dict[str, dict[str, float]] = {
+    "RIDER_FIRST": {
+        "p90_wait_min": 0.30,
+        "cancellation_rate": 0.30,
+        "price_index": 0.25,
+        "completion_rate": 0.15,
+    },
+    "BALANCED": {
+        "p90_wait_min": 0.20,
+        "cancellation_rate": 0.15,
+        "completion_rate": 0.15,
+        "platform_revenue": 0.20,
+        "earnings_per_online_hour_mean": 0.20,
+        "driver_utilization_mean": 0.10,
+    },
+    "REVENUE_FIRST": {
+        "platform_revenue": 0.45,
+        "completion_rate": 0.20,
+        "p90_wait_min": 0.15,
+        "cancellation_rate": 0.10,
+        "earnings_per_online_hour_mean": 0.10,
+    },
+    "DRIVER_FIRST": {
+        "earnings_per_online_hour_mean": 0.40,
+        "driver_utilization_mean": 0.25,
+        "driver_acceptance_rate": 0.15,
+        "p90_wait_min": 0.10,
+        "cancellation_rate": 0.10,
+    },
 }
+
+OBJECTIVE_PROFILE_LABELS: dict[str, str] = {
+    "RIDER_FIRST": "Rider-first",
+    "BALANCED": "Balanced",
+    "REVENUE_FIRST": "Revenue-first",
+    "DRIVER_FIRST": "Driver-first",
+}
+
+OBJECTIVE_PROFILE_DESCRIPTIONS: dict[str, str] = {
+    "RIDER_FIRST": "Prioritizes rider wait time and cancellations while preserving marketplace viability.",
+    "BALANCED": "Balances rider experience, driver economics, and platform outcomes.",
+    "REVENUE_FIRST": "Prioritizes platform revenue while respecting rider and driver guardrails.",
+    "DRIVER_FIRST": "Prioritizes driver earnings and utilization while preserving rider experience.",
+}
+
+DEFAULT_OBJECTIVE_WEIGHTS: dict[str, float] = OBJECTIVE_PROFILES["BALANCED"]
 
 
 def objective_utility(row: dict | pd.Series, weights: dict[str, float] | None = None) -> float:
-    """Weighted marketplace utility (docs PRD-style objective, Overview
-    section 14): completion + revenue + driver earnings, minus wait,
-    each normalized via NORMALIZATION_BANDS so metrics on very different
-    scales (a 0-1 rate vs. a 5-figure revenue number) combine sensibly.
-    Returns NaN if any weighted metric is NaN."""
+    """Weighted marketplace utility: a blend of real metrics (see
+    OBJECTIVE_PROFILES), each normalized via NORMALIZATION_BANDS so metrics
+    on very different scales (a 0-1 rate vs. a 5-figure revenue number)
+    combine sensibly. Returns NaN if any weighted metric is NaN OR missing
+    from `row` (e.g. a caller's data source that doesn't track price_index
+    -- missing is treated the same as NaN, not a KeyError)."""
     w = weights or DEFAULT_OBJECTIVE_WEIGHTS
     total = 0.0
     for metric, weight in w.items():
-        score = normalize_metric(metric, row[metric])
+        score = normalize_metric(metric, row.get(metric, float("nan")))
         if score != score:
             return float("nan")
         total += weight * score
@@ -252,6 +318,7 @@ def recommend_policy(
     scenario: str,
     current_pricing: str,
     current_dispatch: str,
+    objective: str = "BALANCED",
     objective_weights: dict[str, float] | None = None,
 ) -> dict:
     """Recommend the best (pricing, dispatch) combo for `scenario` using the
@@ -261,7 +328,13 @@ def recommend_policy(
     page load; use run_counterfactual() below to get a fresh, live,
     confidence-interval-backed comparison of the specific change this
     recommends before approving it.
+
+    `objective` selects one of OBJECTIVE_PROFILES ("RIDER_FIRST",
+    "BALANCED", "REVENUE_FIRST", "DRIVER_FIRST"); pass `objective_weights`
+    directly to override with a custom weighting instead (used by tests and
+    the sensitivity-analysis helpers below).
     """
+    weights = objective_weights or OBJECTIVE_PROFILES.get(objective, DEFAULT_OBJECTIVE_WEIGHTS)
     sub = results_df[results_df.scenario == scenario]
     if sub.empty:
         return {"action": "error", "reason": f"No pre-computed results for scenario={scenario}."}
@@ -272,26 +345,17 @@ def recommend_policy(
     if current_row.empty:
         return {"action": "error", "reason": f"No pre-computed row for {current_pricing}/{current_dispatch} in {scenario}."}
     current = current_row.iloc[0].to_dict()
-    current["utility"] = objective_utility(current, objective_weights)
+    current["utility"] = objective_utility(current, weights)
 
     # avg_surge_multiplier isn't in the pre-computed matrix (metrics.py's
-    # summary doesn't include it) -- skip that one guardrail for
-    # matrix-sourced candidates rather than silently pretending it passed.
-    def guardrail_pass(row: dict) -> bool:
-        for metric, (kind, bound, _label) in GUARDRAIL_ABSOLUTE.items():
-            if metric not in row or row[metric] != row[metric]:
-                continue
-            if kind == "max" and row[metric] > bound:
-                return False
-            if kind == "min" and row[metric] < bound:
-                return False
-        return True
-
+    # summary doesn't include it) -- guardrail_pass_row skips that one
+    # guardrail for matrix-sourced candidates rather than silently
+    # pretending it passed (see its docstring).
     records = agg.to_dict(orient="records")
     candidates = [r for r in records if not (r["pricing_policy"] == current_pricing and r["dispatch_policy"] == current_dispatch)]
     for r in candidates:
-        r["utility"] = objective_utility(r, objective_weights)
-        r["guardrail_pass"] = guardrail_pass(r)
+        r["utility"] = objective_utility(r, weights)
+        r["guardrail_pass"] = guardrail_pass_row(r)
 
     passing = sorted(
         (r for r in candidates if r["guardrail_pass"] and r["utility"] == r["utility"]),
@@ -308,11 +372,14 @@ def recommend_policy(
     )
     best_overall = all_scored[0] if all_scored else None
 
+    resolved_objective = "CUSTOM" if objective_weights else objective
+
     if not passing or passing[0]["utility"] < current["utility"] + UTILITY_IMPROVEMENT_MARGIN:
         return {
             "action": "none",
             "reason": "No candidate policy clears guardrails with a meaningful utility improvement over the current policy.",
             "scenario": scenario,
+            "objective": resolved_objective,
             "current": current,
             "best_overall": best_overall,
         }
@@ -320,6 +387,7 @@ def recommend_policy(
     return {
         "action": "switch",
         "scenario": scenario,
+        "objective": resolved_objective,
         "current": current,
         "recommended": passing[0],
         "runner_up": passing[1] if len(passing) > 1 else None,
@@ -330,6 +398,87 @@ def recommend_policy(
             and best_overall["dispatch_policy"] == passing[0]["dispatch_policy"]
         ),
     }
+
+
+def guardrail_pass_row(row: dict) -> bool:
+    """True if `row` violates none of GUARDRAIL_ABSOLUTE. A metric missing
+    from `row` (e.g. avg_surge_multiplier isn't in the pre-computed matrix)
+    is skipped rather than treated as a pass or a fail -- silently assuming
+    either would misrepresent data that simply isn't there."""
+    for metric, (kind, bound, _label) in GUARDRAIL_ABSOLUTE.items():
+        if metric not in row or row[metric] != row[metric]:
+            continue
+        if kind == "max" and row[metric] > bound:
+            return False
+        if kind == "min" and row[metric] < bound:
+            return False
+    return True
+
+
+def best_policy_per_scenario(results_df: pd.DataFrame, objective: str = "BALANCED") -> pd.DataFrame:
+    """For every scenario in results_df, the single guardrail-passing,
+    utility-maximizing (pricing, dispatch) combo under `objective` --
+    independent of any "current" policy (unlike recommend_policy, which
+    only proposes a SWITCH away from current). This is what the
+    Experimentation page's "recommendation distribution" is built from: it
+    answers "what would this objective recommend in each condition",
+    revealing whether the optimizer is actually sensitive to marketplace
+    state or just returns the same answer everywhere."""
+    weights = OBJECTIVE_PROFILES.get(objective, DEFAULT_OBJECTIVE_WEIGHTS)
+    rows = []
+    for scenario in results_df.scenario.unique():
+        agg = results_df[results_df.scenario == scenario].groupby(
+            ["pricing_policy", "dispatch_policy"], as_index=False
+        ).mean(numeric_only=True)
+        agg["utility"] = agg.apply(lambda r: objective_utility(r, weights), axis=1)
+        agg["guardrail_pass"] = agg.apply(lambda r: guardrail_pass_row(r.to_dict()), axis=1)
+        passing = agg[agg.guardrail_pass].sort_values("utility", ascending=False)
+        top = passing.iloc[0] if not passing.empty else agg.sort_values("utility", ascending=False).iloc[0]
+        rows.append({
+            "scenario": scenario, "objective": objective,
+            "pricing_policy": top.pricing_policy, "dispatch_policy": top.dispatch_policy,
+            "p90_wait_min": top.p90_wait_min, "platform_revenue": top.platform_revenue,
+            "earnings_per_online_hour_mean": top.earnings_per_online_hour_mean,
+            "cancellation_rate": top.cancellation_rate, "guardrail_pass": bool(top.guardrail_pass),
+        })
+    return pd.DataFrame(rows)
+
+
+def recommendation_frequency(results_df: pd.DataFrame, objective: str = "BALANCED") -> pd.DataFrame:
+    """How often each (pricing, dispatch) combo is the top pick across all
+    scenarios under `objective` -- the frequency table used to check
+    whether the optimizer is context-sensitive or degenerate (always
+    returning the same combo). Built from best_policy_per_scenario, not
+    hardcoded."""
+    per_scenario = best_policy_per_scenario(results_df, objective)
+    per_scenario["combo"] = per_scenario.pricing_policy + " + " + per_scenario.dispatch_policy
+    counts = per_scenario.combo.value_counts().reset_index()
+    counts.columns = ["combo", "times_recommended"]
+    counts["pct_of_scenarios"] = counts.times_recommended / len(per_scenario) * 100.0
+    return counts.sort_values("times_recommended", ascending=False).reset_index(drop=True)
+
+
+def objective_sensitivity_table(
+    results_df: pd.DataFrame, scenario: str, current_pricing: str, current_dispatch: str,
+) -> pd.DataFrame:
+    """For EACH objective profile, what would be recommended for this
+    scenario -- i.e. "does the recommendation change when business
+    priorities change?" (not "does switching FROM current help", which is
+    what recommend_policy answers). One row per profile."""
+    rows = []
+    for name in OBJECTIVE_PROFILES:
+        best = best_policy_per_scenario(results_df[results_df.scenario == scenario], objective=name)
+        if best.empty:
+            continue
+        top = best.iloc[0]
+        rows.append({
+            "objective": OBJECTIVE_PROFILE_LABELS[name],
+            "pricing_policy": top.pricing_policy, "dispatch_policy": top.dispatch_policy,
+            "p90_wait_min": top.p90_wait_min, "platform_revenue": top.platform_revenue,
+            "earnings_per_online_hour_mean": top.earnings_per_online_hour_mean,
+            "matches_current": (top.pricing_policy == current_pricing and top.dispatch_policy == current_dispatch),
+        })
+    return pd.DataFrame(rows)
 
 
 # ---------------------------------------------------------------------------

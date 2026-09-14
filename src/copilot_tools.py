@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src import config, engine, ml_demand, ml_wait_time, world
+from src import config, decision, engine, ml_demand, ml_wait_time, world
 
 RESULTS_DIR = Path(__file__).resolve().parents[1] / "results"
 
@@ -61,9 +61,31 @@ def compare_dispatch_to_baseline(pricing_policy: str, dispatch_policy: str, metr
 
 
 def get_decision_table(top_n: int = 5) -> dict:
-    """The ranked policy-combination decision table (North Star, subject to guardrails)."""
+    """The ranked policy-combination decision table for the NORMAL scenario
+    (ranked by North Star, subject to guardrails vs. the experiment
+    baseline) -- a single fixed ranking, NOT objective-aware. For
+    'what should we do under condition X' or 'what if we cared more about
+    drivers/riders/revenue' questions, use get_recommendation instead."""
     df = _load("decision_table")
-    return {"source": "results/decision_table.csv", "rows": df.head(top_n).to_dict(orient="records")}
+    return {"source": "results/decision_table.csv (NORMAL scenario, fixed North-Star ranking)", "rows": df.head(top_n).to_dict(orient="records")}
+
+
+def get_recommendation(scenario: str, current_pricing: str, current_dispatch: str, objective: str = "BALANCED") -> dict:
+    """Recommend the best (pricing, dispatch) combination for a given
+    scenario AND a given business objective -- unlike get_decision_table
+    (one fixed NORMAL-scenario ranking), this is scenario- and
+    objective-aware. `objective` must be one of RIDER_FIRST, BALANCED,
+    REVENUE_FIRST, DRIVER_FIRST (see src/decision.py::OBJECTIVE_PROFILES
+    for the exact weights and rationale of each). Returns both the
+    guardrail-passing recommendation and the unconstrained best-overall
+    policy when they differ, plus the specific metrics driving the choice."""
+    if objective not in decision.OBJECTIVE_PROFILES:
+        return {"error": f"Unknown objective '{objective}'. Options: {list(decision.OBJECTIVE_PROFILES)}"}
+    df = _load("results")
+    result = decision.recommend_policy(df, scenario, current_pricing, current_dispatch, objective=objective)
+    result["source"] = (f"results/results.csv (pre-computed matrix), objective={objective} "
+                         f"({decision.OBJECTIVE_PROFILE_DESCRIPTIONS[objective]})")
+    return result
 
 
 def get_zone_supply_demand_ranking(scenario: str = "NORMAL", pricing_policy: str = "BASIC_SURGE",
@@ -157,6 +179,7 @@ TOOL_REGISTRY = {
     "get_policy_metrics": get_policy_metrics,
     "compare_dispatch_to_baseline": compare_dispatch_to_baseline,
     "get_decision_table": get_decision_table,
+    "get_recommendation": get_recommendation,
     "get_zone_supply_demand_ranking": get_zone_supply_demand_ranking,
     "simulate_whatif": simulate_whatif,
     "forecast_demand": forecast_demand,

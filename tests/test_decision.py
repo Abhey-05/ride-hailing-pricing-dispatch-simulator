@@ -98,6 +98,99 @@ def test_recommend_policy_missing_scenario_returns_error():
     assert result["action"] == "error"
 
 
+# ---------------------------------------------------------------------------
+# Objective profiles (added during the objective/bias audit)
+# ---------------------------------------------------------------------------
+def test_all_objective_profiles_weights_sum_to_one():
+    for name, weights in decision.OBJECTIVE_PROFILES.items():
+        assert sum(weights.values()) == pytest.approx(1.0), name
+
+
+def test_all_objective_profile_metrics_have_normalization_bands():
+    for name, weights in decision.OBJECTIVE_PROFILES.items():
+        for metric in weights:
+            assert metric in decision.NORMALIZATION_BANDS, f"{name} references unnormalized metric {metric}"
+
+
+def test_only_rider_first_penalizes_price():
+    assert "price_index" in decision.OBJECTIVE_PROFILES["RIDER_FIRST"]
+    for name in ("BALANCED", "REVENUE_FIRST", "DRIVER_FIRST"):
+        assert "price_index" not in decision.OBJECTIVE_PROFILES[name]
+
+
+def test_recommend_policy_objective_selects_correct_weights():
+    """Different objectives can produce different utility for the same
+    candidate -- confirms the `objective` param actually threads through
+    rather than always using DEFAULT_OBJECTIVE_WEIGHTS."""
+    rows = []
+    for pricing, price_idx in [("NO_SURGE", 1.00), ("AGGRESSIVE_SURGE", 1.20)]:
+        rows.append({
+            "scenario": "NORMAL", "pricing_policy": pricing, "dispatch_policy": "NEAREST_DRIVER",
+            "p90_wait_min": 9.0 if pricing == "AGGRESSIVE_SURGE" else 11.0,
+            "completion_rate": 0.5, "cancellation_rate": 0.18 if pricing == "AGGRESSIVE_SURGE" else 0.24,
+            "platform_revenue": 100000.0 if pricing == "AGGRESSIVE_SURGE" else 85000.0,
+            "earnings_per_online_hour_mean": 165.0 if pricing == "AGGRESSIVE_SURGE" else 150.0,
+            "driver_utilization_mean": 0.6, "driver_acceptance_rate": 0.7,
+            "north_star_trips_per_online_hour": 1.9, "avg_pickup_distance_km": 1.3,
+            "price_index": price_idx,
+        })
+    df = pd.DataFrame(rows)
+    rider = decision.recommend_policy(df, "NORMAL", "NO_SURGE", "NEAREST_DRIVER", objective="RIDER_FIRST")
+    revenue = decision.recommend_policy(df, "NORMAL", "NO_SURGE", "NEAREST_DRIVER", objective="REVENUE_FIRST")
+    assert revenue["action"] == "switch" and revenue["recommended"]["pricing_policy"] == "AGGRESSIVE_SURGE"
+    # RIDER_FIRST should value NO_SURGE (already current) more highly given
+    # its large price penalty -- expect either "no action" (already best)
+    # or, if it switches, NOT to the higher-price option revenue picked.
+    if rider["action"] == "switch":
+        assert rider["recommended"]["pricing_policy"] != "AGGRESSIVE_SURGE"
+
+
+def test_recommend_policy_reports_resolved_objective_name():
+    df = pd.DataFrame([
+        {"scenario": "NORMAL", "pricing_policy": "BASIC_SURGE", "dispatch_policy": "NEAREST_DRIVER",
+         "p90_wait_min": 10.0, "completion_rate": 0.5, "cancellation_rate": 0.2, "platform_revenue": 90000.0,
+         "earnings_per_online_hour_mean": 150.0, "driver_utilization_mean": 0.6, "driver_acceptance_rate": 0.7,
+         "north_star_trips_per_online_hour": 1.9, "avg_pickup_distance_km": 1.3},
+    ])
+    result = decision.recommend_policy(df, "NORMAL", "BASIC_SURGE", "NEAREST_DRIVER", objective="DRIVER_FIRST")
+    assert result["objective"] == "DRIVER_FIRST"
+
+
+def test_recommendation_frequency_sums_to_number_of_scenarios():
+    rows = []
+    for scenario in ["NORMAL", "PEAK_DEMAND"]:
+        for pricing in ["NO_SURGE", "BASIC_SURGE"]:
+            for dispatch in ["NEAREST_DRIVER", "ETA_OPTIMIZED"]:
+                rows.append({
+                    "scenario": scenario, "pricing_policy": pricing, "dispatch_policy": dispatch,
+                    "p90_wait_min": 8.0 if dispatch == "ETA_OPTIMIZED" else 11.0,
+                    "completion_rate": 0.5, "cancellation_rate": 0.2, "platform_revenue": 90000.0,
+                    "earnings_per_online_hour_mean": 150.0, "driver_utilization_mean": 0.6,
+                    "driver_acceptance_rate": 0.7, "north_star_trips_per_online_hour": 1.9,
+                    "avg_pickup_distance_km": 1.3,
+                })
+    df = pd.DataFrame(rows)
+    freq = decision.recommendation_frequency(df, objective="BALANCED")
+    assert freq.times_recommended.sum() == 2  # one winner per scenario, 2 scenarios
+    assert freq.pct_of_scenarios.sum() == pytest.approx(100.0)
+
+
+def test_objective_sensitivity_table_has_one_row_per_profile():
+    rows = []
+    for pricing in ["NO_SURGE", "AGGRESSIVE_SURGE"]:
+        rows.append({
+            "scenario": "NORMAL", "pricing_policy": pricing, "dispatch_policy": "ETA_OPTIMIZED",
+            "p90_wait_min": 9.0, "completion_rate": 0.5, "cancellation_rate": 0.2, "platform_revenue": 90000.0,
+            "earnings_per_online_hour_mean": 150.0, "driver_utilization_mean": 0.6, "driver_acceptance_rate": 0.7,
+            "north_star_trips_per_online_hour": 1.9, "avg_pickup_distance_km": 1.3,
+            "price_index": 1.0 if pricing == "NO_SURGE" else 1.15,
+        })
+    df = pd.DataFrame(rows)
+    table = decision.objective_sensitivity_table(df, "NORMAL", "NO_SURGE", "ETA_OPTIMIZED")
+    assert len(table) == len(decision.OBJECTIVE_PROFILES)
+    assert set(table.objective) == set(decision.OBJECTIVE_PROFILE_LABELS.values())
+
+
 def test_run_counterfactual_same_policy_gives_near_zero_effect():
     result = decision.run_counterfactual(
         "NORMAL", "BASIC_SURGE", "NEAREST_DRIVER", "BASIC_SURGE", "NEAREST_DRIVER", seeds=(0, 1)

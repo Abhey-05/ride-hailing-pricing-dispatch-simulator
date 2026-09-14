@@ -7,6 +7,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from src.labels import SEMANTIC_COLORS
+
 TEMPLATE = "plotly_white"
 COLORWAY = px.colors.qualitative.Set2
 
@@ -195,6 +197,7 @@ def marketplace_map(zone_df: pd.DataFrame, metric_label: str, context=None) -> g
         template=TEMPLATE, height=460,
         legend=dict(orientation="h", yanchor="bottom", y=-0.15) if is_status else {},
         margin=dict(l=10, r=10, t=60, b=10),
+        clickmode="event+select",  # a single click on a marker fires Streamlit's on_select immediately
     )
     return fig
 
@@ -204,7 +207,7 @@ def guardrail_bars(checks: list) -> go.Figure:
     guardrail, filled to `utilization_pct` of its limit, red past 100%."""
     labels = [f"{c.label} ({c.value:.2f} vs. limit {c.bound:.2f})" for c in checks]
     pct = [min(c.utilization_pct, 120.0) for c in checks]
-    colors = ["#2ecc71" if c.passed else "#e74c3c" for c in checks]
+    colors = [SEMANTIC_COLORS["green"] if c.passed else SEMANTIC_COLORS["red"] for c in checks]
     fig = go.Figure()
     fig.add_trace(go.Bar(x=pct, y=labels, orientation="h", marker_color=colors))
     fig.add_vline(x=100, line_dash="dot", line_color="gray")
@@ -217,38 +220,100 @@ def guardrail_bars(checks: list) -> go.Figure:
     return fig
 
 
+def _pareto_efficient_mask(wait: pd.Series, revenue: pd.Series) -> pd.Series:
+    """True where no other point has both <= wait and >= revenue (with at
+    least one strictly better) -- i.e. the point isn't dominated. Used to
+    highlight the frontier of "genuinely competitive" policies on the
+    tradeoff chart, so a viewer isn't left to eyeball 20 points."""
+    wait_v, rev_v = wait.values, revenue.values
+    n = len(wait_v)
+    efficient = []
+    for i in range(n):
+        dominated = False
+        for j in range(n):
+            if i == j:
+                continue
+            not_worse = wait_v[j] <= wait_v[i] and rev_v[j] >= rev_v[i]
+            strictly_better = wait_v[j] < wait_v[i] or rev_v[j] > rev_v[i]
+            if not_worse and strictly_better:
+                dominated = True
+                break
+        efficient.append(not dominated)
+    return pd.Series(efficient, index=wait.index)
+
+
 def policy_tradeoff_scatter(
     df: pd.DataFrame, current: tuple[str, str] | None = None, recommended: tuple[str, str] | None = None,
+    current_label: str = "Current",
 ) -> go.Figure:
-    """Like charts.policy_frontier but highlights the current and
-    recommended (pricing, dispatch) points so a viewer can see the tradeoff
-    being proposed, not just the whole cloud of policies."""
+    """Like charts.policy_frontier but highlights the current policy, the
+    recommended policy, and the Pareto-efficient frontier (policies no
+    other policy beats on both wait and revenue at once), so a viewer isn't
+    forced to inspect the whole matrix to see which points are genuinely
+    competitive."""
+    from src import decision  # local import: avoids any top-level circularity, matches marketplace_map's convention
+
     g = df.groupby(["pricing_policy", "dispatch_policy"], as_index=False).agg(
         p90_wait_min=("p90_wait_min", "mean"), platform_revenue=("platform_revenue", "mean"),
+        north_star_trips_per_online_hour=("north_star_trips_per_online_hour", "mean"),
     )
     g["label"] = g.pricing_policy + " + " + g.dispatch_policy
+    g["guardrail_status"] = g.apply(
+        lambda r: "Pass" if decision.guardrail_pass_row(r.to_dict()) else "Fails a guardrail", axis=1
+    )
     g["role"] = "other"
+    g.loc[_pareto_efficient_mask(g.p90_wait_min, g.platform_revenue), "role"] = "pareto"
     if current is not None:
         g.loc[(g.pricing_policy == current[0]) & (g.dispatch_policy == current[1]), "role"] = "current"
     if recommended is not None:
         g.loc[(g.pricing_policy == recommended[0]) & (g.dispatch_policy == recommended[1]), "role"] = "recommended"
 
-    color_map = {"other": "#95a5a6", "current": "#3498db", "recommended": "#2ecc71"}
-    size_map = {"other": 10, "current": 18, "recommended": 20}
+    color_map = {
+        "other": SEMANTIC_COLORS["grey"], "pareto": SEMANTIC_COLORS["amber"],
+        "current": SEMANTIC_COLORS["blue"], "recommended": SEMANTIC_COLORS["green"],
+    }
+    size_map = {"other": 9, "pareto": 12, "current": 18, "recommended": 20}
+    name_map = {"other": "Other", "pareto": "Pareto-efficient", "current": current_label, "recommended": "Recommended"}
+    hover = (
+        "<b>%{text}</b><br>P90 wait: %{x:.2f} min<br>Revenue: %{y:,.0f}<br>"
+        "North Star: %{customdata[0]:.3f} trips/driver-hr<br>Guardrails: %{customdata[1]}<extra></extra>"
+    )
     fig = go.Figure()
-    for role in ["other", "current", "recommended"]:
+    for role in ["other", "pareto", "current", "recommended"]:
         sub = g[g.role == role]
         if sub.empty:
             continue
         fig.add_trace(go.Scatter(
-            x=sub.p90_wait_min, y=sub.platform_revenue, mode="markers", name=role.capitalize(),
+            x=sub.p90_wait_min, y=sub.platform_revenue, mode="markers", name=name_map[role],
             marker=dict(size=size_map[role], color=color_map[role], line=dict(width=1, color="white")),
-            text=sub.label, hovertemplate="<b>%{text}</b><br>P90 wait: %{x:.2f} min<br>Revenue: %{y:.0f}<extra></extra>",
+            text=sub.label, customdata=sub[["north_star_trips_per_online_hour", "guardrail_status"]].values,
+            hovertemplate=hover,
         ))
     fig.update_layout(
         title="Policy Tradeoff: P90 Rider Wait vs. Platform Revenue",
         xaxis_title="P90 rider wait (minutes, lower is better)", yaxis_title="Platform revenue (lower is worse)",
         template=TEMPLATE, height=420,
+    )
+    return fig
+
+
+def recommendation_frequency_bar(freq_df: pd.DataFrame, objective_label: str) -> go.Figure:
+    """How often each (pricing, dispatch) combo is the top pick across all
+    6 scenarios under one objective -- reveals whether the optimizer is
+    context-sensitive (several combos win in different scenarios) or
+    degenerate (one combo wins everywhere)."""
+    g = freq_df.sort_values("times_recommended")
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=g.times_recommended, y=g.combo, orientation="h",
+        marker_color=COLORWAY[0],
+        text=[f"{p:.0f}%" for p in g.pct_of_scenarios], textposition="outside",
+        hovertemplate="<b>%{y}</b><br>Recommended in %{x} of 6 scenarios (%{text})<extra></extra>",
+    ))
+    fig.update_layout(
+        title=f"Recommendation Distribution -- {objective_label} objective, across all 6 scenarios",
+        xaxis_title="Scenarios where this combo was the top pick (of 6)", yaxis_title="",
+        template=TEMPLATE, height=120 + 40 * len(g), margin=dict(l=10, r=40, t=50, b=10),
     )
     return fig
 

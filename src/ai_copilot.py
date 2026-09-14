@@ -62,9 +62,43 @@ HARD RULES:
    supporting numbers and their source, then a one-line caveat if relevant.
 7. For a question that asks "what should we do" / "why did X happen" /
    recommends an action, structure the answer with short labeled sections:
-   OBSERVATION, EVIDENCE, ROOT CAUSE (if diagnosing), RECOMMENDATION,
-   EXPECTED IMPACT, CONFIDENCE. For a simple factual lookup, just answer
-   directly -- don't force the template where it doesn't fit.
+   RECOMMENDATION, EVIDENCE, EXPECTED IMPACT, UNCERTAINTY, CAVEAT. Lead
+   with the recommendation itself, then the evidence that supports it --
+   don't front-load a restated observation before the answer. For a simple
+   factual lookup, just answer directly -- don't force the template where
+   it doesn't fit.
+8. NEVER state a claim stronger than the tool result actually supports.
+   These five claims are NOT interchangeable -- use the one the tool you
+   called actually supports, never a stronger one:
+   - "Best overall pricing+dispatch combination" -- from `get_decision_table`
+     (one fixed NORMAL-scenario ranking) or `get_recommendation`'s
+     `best_overall` field (unconstrained, may fail a guardrail).
+   - "Best dispatch policy under pricing policy X" -- from
+     `compare_dispatch_to_baseline`, which holds pricing FIXED. Never say a
+     dispatch policy "is best across all pricing settings" unless you
+     actually compared it under every pricing policy and it won every time.
+   - "Best policy under objective Y" -- from `get_recommendation` with a
+     specific `objective` (RIDER_FIRST/BALANCED/REVENUE_FIRST/DRIVER_FIRST).
+     Different objectives can and do recommend different policies -- if a
+     user hasn't specified an objective, default to BALANCED and say so.
+   - "Best policy under guardrails" -- `get_recommendation`'s top-level
+     recommendation (guardrail-passing). This can differ from "best
+     overall" -- when it does, say what guardrail the unconstrained winner
+     failed.
+   - "Best policy for scenario Z" -- always name the scenario; a
+     recommendation for PEAK_DEMAND is not a claim about NORMAL.
+   - Use precise statistical language: say "statistically significant" or
+     "the improvement's 95% CI excludes zero", never "statistically real"
+     or other informal phrasing. Distinguish statistical significance
+     (the effect probably isn't noise) from practical significance (the
+     effect also clears the pre-registered minimum-size bar) when both
+     are available -- they can differ.
+9. Formatting: plain numbers only (e.g. "158.19", "baseline 153.71") --
+   never wrap a number or a word touching a number in underscores or
+   asterisks (e.g. not "_baseline_ 153.71" or "revenue by ~$3.5k_"), since
+   the renderer can merge the surrounding words together. Use bold/italics
+   only around whole standalone words or phrases with normal spaces on
+   both sides. Prefer short bullet points over long inline clauses.
 """
 
 TOOLS = [
@@ -83,7 +117,7 @@ TOOLS = [
     },
     {
         "name": "compare_dispatch_to_baseline",
-        "description": "Get the statistically-tested paired comparison (mean difference, 95% bootstrap CI, Wilcoxon p-value, practical-significance verdict) of one dispatch policy vs. the NEAREST_DRIVER baseline, under one pricing policy, for one metric. This is the authoritative source for 'is X better than Y, and is it statistically real' questions.",
+        "description": "Get the statistically-tested paired comparison (mean difference, 95% bootstrap CI, Wilcoxon p-value, practical-significance verdict) of one dispatch policy vs. the NEAREST_DRIVER baseline, holding pricing policy FIXED at the value you pass, for one metric. This is the authoritative source for 'is X better than Y, and is the improvement statistically significant' questions -- note the result is specific to the pricing policy you passed in, not a claim about dispatch policy in general.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -96,10 +130,24 @@ TOOLS = [
     },
     {
         "name": "get_decision_table",
-        "description": "Get the top-N policy combinations ranked by North Star metric (completed trips per online driver-hour), each annotated with whether it clears every guardrail vs. the baseline. This is the authoritative source for 'which strategy should we launch' questions.",
+        "description": "Get the top-N (pricing policy, dispatch policy) COMBINATIONS ranked by North Star metric (completed trips per online driver-hour), each annotated with whether it clears every guardrail vs. the experiment baseline (NORMAL / BASIC_SURGE / NEAREST_DRIVER). This is a single FIXED ranking for the NORMAL scenario only, not aware of scenario or business objective -- for 'what should we do under scenario X' or 'what if we cared more about riders/drivers/revenue' questions, use get_recommendation instead.",
         "input_schema": {
             "type": "object",
             "properties": {"top_n": {"type": "integer", "default": 5}},
+        },
+    },
+    {
+        "name": "get_recommendation",
+        "description": "Recommend the best (pricing, dispatch) combination for a SPECIFIC scenario AND a SPECIFIC business objective -- scenario-aware and objective-aware, unlike get_decision_table. Returns both the guardrail-passing recommendation and (when different) the unconstrained best-overall policy plus which guardrail it failed. This is the authoritative source for 'what should we do' / 'which policy is best if we prioritize X' questions.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "scenario": {"type": "string", "enum": ["NORMAL", "PEAK_DEMAND", "SUPPLY_SHORTAGE", "DEMAND_SHOCK", "LOW_DEMAND", "CONGESTED_PEAK"]},
+                "current_pricing": {"type": "string", "enum": ["NO_SURGE", "BASIC_SURGE", "AGGRESSIVE_SURGE", "CAPPED_SMOOTHED_SURGE"], "description": "The policy to evaluate a switch away from -- use the experiment baseline (BASIC_SURGE) if the user hasn't specified a current policy."},
+                "current_dispatch": {"type": "string", "enum": ["NEAREST_DRIVER", "ETA_OPTIMIZED", "DRIVER_EARNINGS_AWARE", "MARKETPLACE_AWARE", "ADVANCED_HEURISTIC"], "description": "Use NEAREST_DRIVER if the user hasn't specified one -- it's the experiment baseline."},
+                "objective": {"type": "string", "enum": ["RIDER_FIRST", "BALANCED", "REVENUE_FIRST", "DRIVER_FIRST"], "default": "BALANCED", "description": "Which stakeholder's outcomes to prioritize. Default to BALANCED unless the user names a priority (e.g. 'if we cared about drivers' -> DRIVER_FIRST)."},
+            },
+            "required": ["scenario", "current_pricing", "current_dispatch"],
         },
     },
     {

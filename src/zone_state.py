@@ -18,7 +18,7 @@ from dataclasses import dataclass, asdict
 import numpy as np
 import pandas as pd
 
-from src import config
+from src import config, labels
 from src.metrics import MetricsCollector
 
 # Status thresholds on supply/demand ratio = avg available drivers / avg
@@ -36,10 +36,10 @@ STATUS_THRESHOLDS: list[tuple[float, str]] = [
 ]
 
 STATUS_COLOR = {
-    "healthy": "#2ecc71",
-    "moderate": "#f1c40f",
-    "high_pressure": "#e67e22",
-    "severe_shortage": "#e74c3c",
+    "healthy": labels.SEMANTIC_COLORS["green"],
+    "moderate": labels.SEMANTIC_COLORS["amber"],
+    "high_pressure": labels.SEMANTIC_COLORS["amber_dark"],
+    "severe_shortage": labels.SEMANTIC_COLORS["red"],
 }
 
 STATUS_LABEL = {
@@ -172,4 +172,4 @@ def explain_zone(state: ZoneState, city_avg_demand_per_min: float, city_avg_avai
         reasons.append(f"Surge is elevated ({state.avg_surge_multiplier:.2f}x), a symptom of the same imbalance.")
     if not reasons:
         reasons.append("No single dominant driver identified -- metrics are within the normal range for this zone.")
-    return reasons
+    return reasons[:3]
